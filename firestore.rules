@@ -1,0 +1,21 @@
+// firestore.rules
+// Deploy with: firebase deploy --only firestore:rules
+// Or paste directly in: Firebase Console → Firestore → Rules tab
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Each user can only read/write their own logs
+    match /users/{userId}/logs/{logId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Anyone signed in can read announcements.
+    // Writing is blocked from the client — use Firebase Console to post.
+    match /announcements/{docId} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+  }
+}
