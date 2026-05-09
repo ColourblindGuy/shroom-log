@@ -76,8 +76,20 @@ export const THEMES = {
     text: "#fff7ed", textMid: "#9a5a2a", textFaint: "#6a3a1a",
     sidebar: "#0e0500", tabActive: "#2a1400",
     blob1: "#ea580c14", blob2: "#92400e14",
-    positive: "#86efac", warning: "#fca5a5",
+    positive: "#16a34a", warning: "#dc2626",
     cardActive: "#1f0e00", cardDone: "#0a0500",
+  },
+  daytime: {
+    id: "daytime", label: "Daytime", emoji: "☀️",
+    bg: "#f0f4f8", surface: "#ffffff", surfaceAlt: "#e8edf3",
+    border: "#c8d4e0", borderFaint: "#dde5ef",
+    accent: "#4f46e5", accentDark: "#3730a3", accentGlow: "#6366f144",
+    accentGrad: "linear-gradient(135deg,#3730a3,#6366f1)",
+    text: "#1e1b4b", textMid: "#6366a0", textFaint: "#9da3c4",
+    sidebar: "#e8edf3", tabActive: "#dde5ef",
+    blob1: "#6366f114", blob2: "#4338ca14",
+    positive: "#16a34a", warning: "#dc2626",
+    cardActive: "#ffffff", cardDone: "#f5f7fa",
   },
 };
 
@@ -112,6 +124,7 @@ const NAV_ITEMS = [
   { key: "register",  label: "Register",  icon: "✏️" },
   { key: "history",   label: "History",   icon: "📋" },
   { key: "analytics", label: "Analytics", icon: "📊" },
+  { key: "settings",  label: "Settings",  icon: "⚙️" },
 ];
 
 const BLANK_FORM = {
@@ -506,10 +519,19 @@ export default function App() {
 
   const filteredLog = log.filter(e => {
     const matchType   = filterType === "all" || e.mushroomType === filterType;
-    const matchSearch = !search
-      || (e.notes || "").toLowerCase().includes(search.toLowerCase())
-      || (MUSHROOM_TYPES.find(t => t.id === e.mushroomType)?.label || "").toLowerCase().includes(search.toLowerCase());
-    return matchType && matchSearch;
+    if (!matchType) return false;
+    if (!search.trim()) return true;
+    const q    = search.toLowerCase().trim();
+    const type = MUSHROOM_TYPES.find(t => t.id === e.mushroomType);
+    // fuzzy: match any of these fields partially
+    return (
+      (type?.label || "").toLowerCase().includes(q) ||
+      (type?.emoji || "").includes(q) ||
+      (e.notes  || "").toLowerCase().includes(q) ||
+      (e.size   || "").toLowerCase().includes(q) ||
+      (e.stars  || "").includes(q) ||
+      (e.date   || "").toLowerCase().includes(q)
+    );
   });
 
   const activeAnn = announcements.filter(a => !dismissed.includes(a.id));
@@ -519,7 +541,7 @@ export default function App() {
   if (!user)      return <AuthScreen />;
 
   // Shared props
-  const shared = { th, log, filteredLog, allLog: log, search, setSearch,
+  const shared = { th, log: filteredLog, allLog: log, search, setSearch,
     filterType, setFilterType, onEdit: startEdit, onDelete: deleteEntry };
 
   function renderContent() {
@@ -533,11 +555,9 @@ export default function App() {
         selectedType={selectedType} endTime={endTime} durationMs={durationMs}
         startMs={startMs} submit={submit} saved={saved} notif={notif} />
     );
-    if (view === "history") return <HistoryView {...shared} />;
-    return (
-      <AnalyticsView th={th} analytics={analytics} log={log}
-        themeId={themeId} applyTheme={applyTheme} />
-    );
+    if (view === "history")   return <HistoryView {...shared} />;
+    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} />;
+    return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
 
   const annBanners = activeAnn.map(a => (
@@ -592,21 +612,9 @@ export default function App() {
             ))}
           </nav>
           <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-            {!notif && (
-              <button onClick={requestNotif} style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
-                borderRadius: 10, color: th.textMid, padding: "9px 14px", cursor: "pointer",
-                fontFamily: "inherit", fontSize: 13, fontWeight: 700, width: "100%" }}>
-                🔔 Enable notifications
-              </button>
-            )}
             <div style={{ fontSize: 11, color: th.textFaint, textAlign: "center" }}>
               {user.displayName || user.email}
             </div>
-            <button onClick={() => signOut(auth)} style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
-              borderRadius: 10, color: th.textMid, padding: "9px 14px", cursor: "pointer",
-              fontFamily: "inherit", fontSize: 13, fontWeight: 700, width: "100%" }}>
-              Sign out
-            </button>
           </div>
         </aside>
 
@@ -640,18 +648,6 @@ export default function App() {
             </div>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            {!notif && (
-              <button onClick={requestNotif} title="Enable notifications"
-                style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
-                  borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer", color: th.accent }}>
-                🔔
-              </button>
-            )}
-            <button onClick={() => signOut(auth)} title="Sign out"
-              style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
-                borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer", color: th.accent }}>
-              👤
-            </button>
           </div>
         </div>
         <nav style={{ display: "flex", borderTop: `1px solid ${th.borderFaint}` }}>
@@ -919,8 +915,13 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
 // HISTORY VIEW — tabbed: In Progress / Completed
 // ─────────────────────────────────────────────────────────────
 function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilterType, onEdit, onDelete }) {
-  const [histTab, setHistTab] = useState("active"); // "active" | "completed"
-  const now = Date.now();
+  const [histTab, setHistTab] = useState("active");
+  // Live clock so active/completed split and "X ago" update every second
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const active = log
     .filter(e => !e.endTime || e.endTime > now)
@@ -928,7 +929,7 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
       if (!a.endTime && !b.endTime) return b.registeredAt - a.registeredAt;
       if (!a.endTime) return 1;
       if (!b.endTime) return -1;
-      return a.endTime - b.endTime; // soonest ending first
+      return a.endTime - b.endTime;
     });
 
   const completed = log
@@ -986,14 +987,14 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
         </div>
       ) : shown.map((entry, i) => (
         <LogCard key={entry.id} entry={entry} index={i}
-          isActive={histTab === "active"} th={th}
+          isActive={histTab === "active"} th={th} now={now}
           onEdit={onEdit} onDelete={onDelete} />
       ))}
     </div>
   );
 }
 
-function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
+function LogCard({ entry, index, isActive, th, now, onEdit, onDelete }) {
   const t       = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
   const hasEnd  = !!entry.endTime;
   const endDate = hasEnd ? new Date(entry.endTime) : null;
@@ -1036,7 +1037,7 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
               {isActive
                 ? <Countdown endTime={entry.endTime} th={th} />
                 : <span style={{ fontSize: 12, color: th.positive, fontWeight: 700 }}>
-                    {formatDuration(Date.now() - entry.endTime)} ago
+                    {formatDuration(now - entry.endTime)} ago
                   </span>
               }
             </div>
@@ -1084,7 +1085,7 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
 // ─────────────────────────────────────────────────────────────
 // ANALYTICS VIEW — reworked + theme picker
 // ─────────────────────────────────────────────────────────────
-function AnalyticsView({ th, analytics, log, themeId, applyTheme }) {
+function AnalyticsView({ th, analytics, log }) {
   const { total, completed, active, byType, bySize, streak, longestStreak,
     avgPerWeek, completionRate, bestDay, topType, recentWeeks, recentMonths } = analytics;
 
@@ -1094,29 +1095,6 @@ function AnalyticsView({ th, analytics, log, themeId, applyTheme }) {
 
   return (
     <div className="fade-in">
-
-      {/* ── Theme Picker ── */}
-      <div style={{ background: th.surface, border: `1px solid ${th.border}`,
-        borderRadius: 16, padding: 16, marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: th.textMid,
-          letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
-          🎨 Theme
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {Object.values(THEMES).map(t => (
-            <button key={t.id} onClick={() => applyTheme(t.id)} style={{
-              padding: "7px 14px", borderRadius: 99, fontFamily: "inherit",
-              fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
-              border: `2px solid ${themeId === t.id ? t.accent : th.border}`,
-              background: themeId === t.id ? `${t.accent}22` : th.surfaceAlt,
-              color: themeId === t.id ? t.accent : th.textFaint,
-              boxShadow: themeId === t.id ? `0 0 12px ${t.accentGlow}` : "none",
-            }}>
-              {t.emoji} {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {log.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 20px", color: th.textFaint }}>
@@ -1227,7 +1205,152 @@ function AnalyticsView({ th, analytics, log, themeId, applyTheme }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// GLOBAL CSS (injected dynamically so it picks up theme vars)
+// SETTINGS VIEW
+// ─────────────────────────────────────────────────────────────
+function SettingsView({ th, themeId, applyTheme, user }) {
+  return (
+    <div className="fade-in">
+
+      {/* Account */}
+      <div style={{ background: th.surface, border: `1px solid ${th.border}`,
+        borderRadius: 16, padding: 20, marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: th.textMid,
+          letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 14 }}>
+          👤 Account
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%",
+            background: th.accentGrad, display: "flex", alignItems: "center",
+            justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+            {user?.photoURL
+              ? <img src={user.photoURL} style={{ width: 48, height: 48, borderRadius: "50%" }} alt="" />
+              : "🍄"}
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: th.text }}>
+              {user?.displayName || "Trainer"}
+            </div>
+            <div style={{ fontSize: 12, color: th.textFaint }}>{user?.email}</div>
+          </div>
+        </div>
+        <button onClick={() => signOut(auth)} style={{
+          width: "100%", padding: "11px", background: th.surfaceAlt,
+          border: `1.5px solid ${th.border}`, borderRadius: 12,
+          color: th.textMid, fontWeight: 800, fontSize: 14,
+          cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s",
+        }}>
+          Sign Out
+        </button>
+      </div>
+
+      {/* Notifications */}
+      <NotifSetting th={th} />
+
+      {/* Theme picker */}
+      <div style={{ background: th.surface, border: `1px solid ${th.border}`,
+        borderRadius: 16, padding: 20, marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: th.textMid,
+          letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 14 }}>
+          🎨 Theme
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {Object.values(THEMES).map(t => {
+            const active = themeId === t.id;
+            return (
+              <button key={t.id} onClick={() => applyTheme(t.id)} style={{
+                padding: "14px 12px", borderRadius: 14, fontFamily: "inherit",
+                fontWeight: 800, cursor: "pointer", transition: "all 0.2s",
+                border: `2px solid ${active ? t.accent : th.border}`,
+                background: active ? `${t.accent}22` : th.surfaceAlt,
+                boxShadow: active ? `0 0 16px ${t.accentGlow}` : "none",
+                display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6,
+              }}>
+                {/* Mini preview swatch */}
+                <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
+                  {[t.bg, t.surface, t.accent, t.accentDark].map((c, i) => (
+                    <div key={i} style={{ width: 14, height: 14, borderRadius: 4,
+                      background: c, border: `1px solid ${t.border}` }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 18 }}>{t.emoji}</div>
+                <div style={{ fontSize: 13, color: active ? t.accent : th.textMid }}>{t.label}</div>
+                {active && (
+                  <div style={{ fontSize: 10, color: t.accent, fontWeight: 900 }}>✓ Active</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* App info */}
+      <div style={{ background: th.surface, border: `1px solid ${th.border}`,
+        borderRadius: 16, padding: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: th.textMid,
+          letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 14 }}>
+          ℹ️ About
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <PikminLogo size={40} />
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 16, color: th.text }}>Shroom Log</div>
+            <div style={{ fontSize: 12, color: th.textFaint }}>Pikmin Bloom Mushroom Tracker</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: th.textFaint, lineHeight: 1.7 }}>
+          Track your Pikmin Bloom mushroom battles, share Discord timestamps with your squad,
+          and never miss an end time again.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotifSetting({ th }) {
+  const [status, setStatus] = useState(
+    "Notification" in window ? Notification.permission : "unsupported"
+  );
+
+  async function request() {
+    if (!("Notification" in window)) return;
+    const p = await Notification.requestPermission();
+    setStatus(p);
+  }
+
+  const label = status === "granted"   ? "✅ Notifications enabled"
+              : status === "denied"    ? "🚫 Blocked by browser — enable in browser settings"
+              : status === "unsupported" ? "⚠️ Not supported in this browser"
+              : "🔔 Enable Notifications";
+
+  return (
+    <div style={{ background: th.surface, border: `1px solid ${th.border}`,
+      borderRadius: 16, padding: 20, marginBottom: 14 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: th.textMid,
+        letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 14 }}>
+        🔔 Notifications
+      </div>
+      <div style={{ fontSize: 13, color: th.textFaint, marginBottom: 12, lineHeight: 1.6 }}>
+        Get a reminder 5 minutes before a mushroom ends.
+      </div>
+      <button
+        onClick={request}
+        disabled={status === "granted" || status === "denied" || status === "unsupported"}
+        style={{
+          width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
+          fontWeight: 800, fontSize: 14, cursor: status === "default" ? "pointer" : "default",
+          border: `1.5px solid ${status === "granted" ? th.positive : th.border}`,
+          background: status === "granted" ? `${th.positive}22` : th.surfaceAlt,
+          color: status === "granted" ? th.positive : th.textMid,
+          transition: "all 0.2s",
+        }}>
+        {label}
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// GLOBAL CSS
 // ─────────────────────────────────────────────────────────────
 function globalCss(th) {
   return `
