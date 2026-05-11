@@ -7,7 +7,7 @@
 //  - 5 UI themes: Midnight (default), Forest, Sakura, Ocean, Sunset
 //  - Theme persisted to localStorage
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { loadLogs, addLog, editLog, removeLog } from "./api/logs";
@@ -696,19 +696,32 @@ function Splash({ th }) {
 // ─────────────────────────────────────────────────────────────
 // REGISTER VIEW
 // ─────────────────────────────────────────────────────────────
+// inp is defined as a function of th so it picks up theme colors
+// but font-size is always 16px to prevent iOS auto-zoom on focus
+function makeInp(th) {
+  return {
+    width: "100%", background: th.surfaceAlt, border: `1.5px solid ${th.border}`,
+    borderRadius: 12, color: th.text, padding: "10px 14px",
+    fontSize: 16, fontFamily: "inherit", colorScheme: "dark",
+  };
+}
+
 function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, endTime, durationMs, startMs, submit, saved, notif }) {
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+  // useCallback so `set` is stable — prevents the entire form re-rendering
+  // every child button just because an unrelated field changed
+  const set = useCallback(
+    (k, v) => setForm(prev => ({ ...prev, [k]: v })),
+    [setForm]
+  );
+
+  // Memoize inp so the object ref is stable across renders
+  const inp = useMemo(() => makeInp(th), [th]);
+
   const categories = [
     { key: "regular",   label: "Regular",   icon: "🍄" },
     { key: "elemental", label: "Elemental", icon: "⚡" },
     { key: "event",     label: "Event",     icon: "✨" },
   ];
-
-  const inp = {
-    width: "100%", background: th.surfaceAlt, border: `1.5px solid ${th.border}`,
-    borderRadius: 12, color: th.text, padding: "10px 14px",
-    fontSize: 14, fontFamily: "inherit", colorScheme: "dark",
-  };
 
   return (
     <div className="fade-in">
@@ -806,10 +819,28 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
             <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>Total strength in-game</div>
           </div>
         </div>
-        <input type="datetime-local" value={form.startTime || localNow()}
-          onChange={e => set("startTime", e.target.value)} style={inp} />
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <input type="datetime-local" value={form.startTime || localNow()}
+              onChange={e => set("startTime", e.target.value)}
+              style={inp} />
+          </div>
+          <button
+            onClick={() => set("startTime", localNow())}
+            title="Set to right now"
+            style={{
+              padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${th.border}`,
+              background: th.surfaceAlt, color: th.accent, fontWeight: 800,
+              fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+              whiteSpace: "nowrap", transition: "all 0.15s", flexShrink: 0,
+              boxShadow: `0 0 0 0 ${th.accentGlow}`,
+            }}
+          >
+            🕐 Now
+          </button>
+        </div>
         <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5, marginBottom: 10 }}>
-          Battle start time (defaults to now)
+          Battle start time — tap Now to use the current time
         </div>
 
         {endTime && (
@@ -946,7 +977,7 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
           placeholder="🔍 Search…"
           style={{ flex: 1, minWidth: 0, background: th.surfaceAlt, border: `1.5px solid ${th.border}`,
             borderRadius: 12, color: th.text, padding: "10px 14px",
-            fontSize: 14, fontFamily: "inherit", colorScheme: "dark" }} />
+            fontSize: 16, fontFamily: "inherit", colorScheme: "dark" }} />
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         <FilterPill value="all" current={filterType} onChange={setFilterType} label="All" th={th} />
