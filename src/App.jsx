@@ -541,8 +541,23 @@ export default function App() {
   if (!user)      return <AuthScreen />;
 
   // Shared props
+  async function deleteAllCompleted() {
+    const completedEntries = log.filter(e => e.endTime && e.endTime <= Date.now());
+    if (completedEntries.length === 0) return;
+    if (!window.confirm(`Delete all ${completedEntries.length} completed mushroom${completedEntries.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    try {
+      await Promise.all(
+        completedEntries
+          .filter(e => e._firebaseId)
+          .map(e => removeLog(e._firebaseId))
+      );
+      setLog(prev => prev.filter(e => !e.endTime || e.endTime > Date.now()));
+    } catch { alert("Failed to delete some entries. Try again."); }
+  }
+
   const shared = { th, log: filteredLog, allLog: log, search, setSearch,
-    filterType, setFilterType, onEdit: startEdit, onDelete: deleteEntry };
+    filterType, setFilterType, onEdit: startEdit, onDelete: deleteEntry,
+    onDeleteAll: deleteAllCompleted };
 
   function renderContent() {
     if (loading) return (
@@ -945,7 +960,7 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
 // ─────────────────────────────────────────────────────────────
 // HISTORY VIEW — tabbed: In Progress / Completed
 // ─────────────────────────────────────────────────────────────
-function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilterType, onEdit, onDelete }) {
+function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilterType, onEdit, onDelete, onDeleteAll }) {
   const [histTab, setHistTab] = useState("active");
   // Live clock so active/completed split and "X ago" update every second
   const [now, setNow] = useState(Date.now());
@@ -1011,6 +1026,21 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
         ))}
       </div>
 
+      {histTab === "completed" && completed.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <button onClick={onDeleteAll} style={{
+            background: "transparent",
+            border: `1.5px solid ${th.warning}44`,
+            borderRadius: 10, padding: "6px 14px",
+            color: th.warning, fontSize: 12, fontWeight: 800,
+            cursor: "pointer", fontFamily: "inherit",
+            transition: "all 0.2s",
+          }}>
+            🗑️ Clear all completed
+          </button>
+        </div>
+      )}
+
       {shown.length === 0 ? (
         <div style={{ textAlign: "center", padding: "50px 20px", color: th.textFaint }}>
           <PikminLogo size={56} /><br /><br />
@@ -1018,14 +1048,14 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
         </div>
       ) : shown.map((entry, i) => (
         <LogCard key={entry.id} entry={entry} index={i}
-          isActive={histTab === "active"} th={th} now={now}
+          isActive={histTab === "active"} th={th}
           onEdit={onEdit} onDelete={onDelete} />
       ))}
     </div>
   );
 }
 
-function LogCard({ entry, index, isActive, th, now, onEdit, onDelete }) {
+function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
   const t       = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
   const hasEnd  = !!entry.endTime;
   const endDate = hasEnd ? new Date(entry.endTime) : null;
@@ -1060,38 +1090,39 @@ function LogCard({ entry, index, isActive, th, now, onEdit, onDelete }) {
           <div style={{ background: th.bg, border: `1px solid ${th.borderFaint}`,
             borderRadius: 12, padding: "10px 12px", marginBottom: 6 }}>
 
-            {/* Time remaining / ended */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: 12, color: th.textMid }}>
-                {isActive ? "⏱ Time left" : "✅ Ended"}
-              </span>
-              {isActive
-                ? <Countdown endTime={entry.endTime} th={th} />
-                : <span style={{ fontSize: 12, color: th.positive, fontWeight: 700 }}>
-                    {formatDuration(now - entry.endTime)} ago
+            {isActive ? (
+              <>
+                {/* Time remaining */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: th.textMid }}>⏱ Time left</span>
+                  <Countdown endTime={entry.endTime} th={th} />
+                </div>
+                {/* Estimated end date */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: th.textFaint }}>📅 Ends</span>
+                  <span style={{ fontSize: 12, color: th.accent, fontWeight: 700 }}>
+                    {formatDate(endDate)}
                   </span>
-              }
-            </div>
-
-            {/* Estimated end date — always visible */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: th.textFaint }}>
-                📅 {isActive ? "Ends" : "Ended"}
-              </span>
-              <span style={{ fontSize: 12, color: isActive ? th.accent : th.textMid, fontWeight: 700 }}>
-                {formatDate(endDate)}
-              </span>
-            </div>
-
-            {/* Discord timestamp — always visible, no expand needed */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <code style={{ fontSize: 10, color: th.textMid, fontFamily: "monospace",
-                background: th.surfaceAlt, padding: "3px 8px", borderRadius: 6,
-                border: `1px solid ${th.border}`, flex: 1, wordBreak: "break-all" }}>
-                {toDiscordTs(endDate, "F")}
-              </code>
-              <CopyBtn text={toDiscordTs(endDate, "F")} label="📋" th={th} />
-            </div>
+                </div>
+                {/* Discord timestamp */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <code style={{ fontSize: 10, color: th.textMid, fontFamily: "monospace",
+                    background: th.surfaceAlt, padding: "3px 8px", borderRadius: 6,
+                    border: `1px solid ${th.border}`, flex: 1, wordBreak: "break-all" }}>
+                    {toDiscordTs(endDate, "F")}
+                  </code>
+                  <CopyBtn text={toDiscordTs(endDate, "F")} label="📋" th={th} />
+                </div>
+              </>
+            ) : (
+              /* Completed: just show the date it ended, nothing else */
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: th.textFaint }}>✅ Ended</span>
+                <span style={{ fontSize: 12, color: th.textMid, fontWeight: 700 }}>
+                  {formatDate(endDate)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
