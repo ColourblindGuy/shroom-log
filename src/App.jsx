@@ -97,28 +97,63 @@ export const THEMES = {
 // MUSHROOM TYPES — add new objects here to extend
 // ─────────────────────────────────────────────────────────────
 export const MUSHROOM_TYPES = [
-  { id:"red",       label:"Red",       emoji:"🔴", color:"#e05252", glow:"#e0525244", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard red mushroom" },
-  { id:"yellow",    label:"Yellow",    emoji:"🟡", color:"#f5c518", glow:"#f5c51844", textColor:"#433", category:"regular",   pikmin:"Any",        desc:"Standard yellow mushroom" },
-  { id:"blue",      label:"Blue",      emoji:"🔵", color:"#4a90d9", glow:"#4a90d944", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard blue mushroom" },
-  { id:"purple",    label:"Purple",    emoji:"🟣", color:"#9b72cf", glow:"#9b72cf44", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard purple mushroom" },
-  { id:"white",     label:"White",     emoji:"⚪", color:"#ccc5bc", glow:"#ccc5bc44", textColor:"#444", category:"regular",   pikmin:"Any",        desc:"Standard white mushroom" },
-  { id:"pink",      label:"Pink",      emoji:"🩷", color:"#f080b4", glow:"#f080b444", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard pink mushroom" },
-  { id:"grey",      label:"Grey",      emoji:"🩶", color:"#94a3b8", glow:"#94a3b844", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard grey mushroom" },
-  { id:"teal",      label:"Teal",      emoji:"🩵", color:"#2dd4bf", glow:"#2dd4bf44", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard teal mushroom" },
-  { id:"fire",      label:"Fire",      emoji:"🔥", color:"#ff6b35", glow:"#ff6b3544", textColor:"#fff", category:"elemental", pikmin:"Red only",   desc:"Bring Red Pikmin for bonus damage" },
-  { id:"water",     label:"Water",     emoji:"💧", color:"#38bdf8", glow:"#38bdf844", textColor:"#fff", category:"elemental", pikmin:"Blue only",  desc:"Bring Blue Pikmin for bonus damage" },
-  { id:"electric",  label:"Electric",  emoji:"⚡", color:"#facc15", glow:"#facc1544", textColor:"#333", category:"elemental", pikmin:"Yellow",     desc:"Bring Yellow Pikmin for bonus damage" },
-  { id:"poison",    label:"Poison",    emoji:"☠️", color:"#c084fc", glow:"#c084fc44", textColor:"#fff", category:"elemental", pikmin:"White only", desc:"Bring White Pikmin for bonus damage" },
-  { id:"crystal",   label:"Crystal",   emoji:"💎", color:"#818cf8", glow:"#818cf844", textColor:"#fff", category:"elemental", pikmin:"Rock only",  desc:"Bring Rock Pikmin for bonus damage" },
-  { id:"brilliant", label:"Brilliant", emoji:"✨", color:"#fde68a", glow:"#fde68a44", textColor:"#555", category:"event",     pikmin:"Any",        desc:"Rare brilliant mushroom — higher rewards" },
-  { id:"giant",     label:"Giant",     emoji:"🌟", color:"#86efac", glow:"#86efac44", textColor:"#333", category:"event",     pikmin:"Any",        desc:"Oversized mushroom needing group effort" },
-  { id:"event",     label:"Event",     emoji:"🎉", color:"#fb923c", glow:"#fb923c44", textColor:"#fff", category:"event",     pikmin:"Any",        desc:"Limited-time event mushroom" },
+  // Regular (Small / Normal / Large)
+  { id:"red",      label:"Red",      emoji:"🔴", color:"#e05252", glow:"#e0525244", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard red mushroom" },
+  { id:"yellow",   label:"Yellow",   emoji:"🟡", color:"#f5c518", glow:"#f5c51844", textColor:"#433", category:"regular",   pikmin:"Any",        desc:"Standard yellow mushroom" },
+  { id:"blue",     label:"Blue",     emoji:"🔵", color:"#4a90d9", glow:"#4a90d944", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard blue mushroom" },
+  { id:"purple",   label:"Purple",   emoji:"🟣", color:"#9b72cf", glow:"#9b72cf44", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard purple mushroom" },
+  { id:"white",    label:"White",    emoji:"⚪", color:"#ccc5bc", glow:"#ccc5bc44", textColor:"#444", category:"regular",   pikmin:"Any",        desc:"Standard white mushroom" },
+  { id:"pink",     label:"Pink",     emoji:"🩷", color:"#f080b4", glow:"#f080b444", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard pink mushroom" },
+  { id:"grey",     label:"Grey",     emoji:"🩶", color:"#94a3b8", glow:"#94a3b844", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard grey mushroom" },
+  { id:"ice",      label:"Ice Blue", emoji:"🩵", color:"#2dd4bf", glow:"#2dd4bf44", textColor:"#fff", category:"regular",   pikmin:"Any",        desc:"Standard ice blue mushroom" },
+  // Elemental (Normal / Large only — no Small size)
+  { id:"fire",     label:"Fire",     emoji:"🔥", color:"#ff6b35", glow:"#ff6b3544", textColor:"#fff", category:"elemental", pikmin:"Red only",   desc:"No Small · Red Pikmin only" },
+  { id:"water",    label:"Water",    emoji:"💧", color:"#38bdf8", glow:"#38bdf844", textColor:"#fff", category:"elemental", pikmin:"Blue only",  desc:"No Small · Blue Pikmin only" },
+  { id:"electric", label:"Electric", emoji:"⚡", color:"#facc15", glow:"#facc1544", textColor:"#333", category:"elemental", pikmin:"Yellow",     desc:"No Small · Yellow Pikmin only" },
+  { id:"poison",   label:"Poison",   emoji:"☠️", color:"#c084fc", glow:"#c084fc44", textColor:"#fff", category:"elemental", pikmin:"White only", desc:"No Small · White Pikmin only" },
+  { id:"crystal",  label:"Crystal",  emoji:"💎", color:"#818cf8", glow:"#818cf844", textColor:"#fff", category:"elemental", pikmin:"Rock only",  desc:"No Small · Rock Pikmin only" },
+  // Event (Normal / Giant only)
+  { id:"event",    label:"Event",    emoji:"🎉", color:"#fb923c", glow:"#fb923c44", textColor:"#fff", category:"event",     pikmin:"Any",        desc:"Event mushroom · Normal or Giant only" },
 ];
 
-export const SIZES          = ["Small", "Normal", "Large", "Giant"];
-export const SIZE_HP_APPROX = { Small: 265000, Normal: 531000, Large: 2650000, Giant: 9200000 };
-export const SIZE_EMOJI     = { Small: "🍄", Normal: "🍄🍄", Large: "🍄🍄🍄", Giant: "🍄🍄🍄🍄" };
-export const STAR_RATINGS   = ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐"];
+export const SIZES      = ["Small", "Normal", "Large", "Giant"];
+export const SIZE_EMOJI = { Small:"🍄", Normal:"🍄🍄", Large:"🍄🍄🍄", Giant:"🍄🍄🍄🍄" };
+export const STAR_RATINGS = ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐"];
+
+// ─────────────────────────────────────────────────────────────
+// EXACT HP PER TYPE PER SIZE — source: Pikipedia (verified)
+// Index: [Small, Normal, Large, Giant] — null = invalid combo
+// ─────────────────────────────────────────────────────────────
+export const HP_MAP = {
+  //            Small   Normal     Large    Giant
+  red:      [  87400,  670600,  2916000,    null ],
+  yellow:   [  84200,  645800,  2808000,    null ],
+  blue:     [  84200,  645800,  2808000,    null ],
+  purple:   [  93900,  720300,  3132000,    null ],
+  white:    [  81000,  621000,  2700000,    null ],
+  pink:     [  81000,  621000,  2700000,    null ],
+  grey:     [  90700,  695500,  3024000,    null ],
+  ice:      [  81000,  621000,  2700000,    null ],
+  fire:     [   null, 3850200, 13662000,    null ],
+  water:    [   null, 3816700, 13543200,    null ],
+  electric: [   null, 3816700, 13543200,    null ],
+  poison:   [   null, 3783200, 13424400,    null ],
+  crystal:  [   null, 3883600, 13780800,    null ],
+  event:    [   null,  648000,      null, 2880000 ],
+};
+
+const SIZE_IDX = { Small:0, Normal:1, Large:2, Giant:3 };
+
+export function getHP(mushroomType, size) {
+  if (!mushroomType || !size) return null;
+  return HP_MAP[mushroomType]?.[SIZE_IDX[size]] ?? null;
+}
+
+export function validSizes(mushroomType) {
+  const row = HP_MAP[mushroomType];
+  if (!row) return SIZES;
+  return SIZES.filter((_, i) => row[i] !== null);
+}
 
 const NAV_ITEMS = [
   { key: "register",  label: "Register",  icon: "✏️" },
@@ -130,6 +165,7 @@ const NAV_ITEMS = [
 const BLANK_FORM = {
   mushroomType: "", size: "", stars: "", players: 1,
   workload: "", strength: "", notes: "", startTime: "",
+  pastMode: false, endedAt: "", // pastMode = logging a mushroom that already finished
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -458,11 +494,19 @@ export default function App() {
 
   async function submit() {
     if (!form.mushroomType || !form.size || !form.stars) return;
+    // In pastMode, endedAt is required
+    if (form.pastMode && !form.endedAt) return;
     const existing = editId ? log.find(e => e.id === editId) : null;
+
+    // Determine endTime: pastMode uses endedAt, otherwise calculated from workload/strength
+    const resolvedEndTime = form.pastMode
+      ? new Date(form.endedAt).getTime()
+      : (endTime ? endTime.getTime() : null);
+
     const entry = {
       ...form,
       id:           existing?.id || Date.now(),
-      endTime:      endTime ? endTime.getTime() : null,
+      endTime:      resolvedEndTime,
       registeredAt: existing?.registeredAt || Date.now(),
       date: new Date().toLocaleDateString("en-US", {
         month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
@@ -475,7 +519,7 @@ export default function App() {
       } else {
         const fbId = await addLog(entry);
         setLog(prev => [{ ...entry, _firebaseId: fbId }, ...prev]);
-        scheduleNotif({ ...entry, _firebaseId: fbId });
+        if (!form.pastMode) scheduleNotif({ ...entry, _firebaseId: fbId });
       }
     } catch (e) { console.error(e); alert("Failed to save. Check your connection."); return; }
     setEditId(null); setForm(BLANK_FORM);
@@ -764,7 +808,17 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
                 {types.map(t => {
                   const active = form.mushroomType === t.id;
                   return (
-                    <button key={t.id} onClick={() => set("mushroomType", t.id)} title={t.desc} style={{
+                    <button key={t.id} onClick={() => {
+                      // When type changes, always recalculate workload for current size
+                      const hp = getHP(t.id, form.size);
+                      setForm(prev => ({
+                        ...prev,
+                        mushroomType: t.id,
+                        workload: hp !== null ? String(hp) : "",
+                        // if current size is invalid for new type, clear it
+                        size: validSizes(t.id).includes(prev.size) ? prev.size : "",
+                      }));
+                    }} title={t.desc} style={{
                       borderRadius: 14, padding: "10px 4px", fontWeight: 800, cursor: "pointer",
                       fontFamily: "inherit", lineHeight: 1.3, minHeight: 58, transition: "transform 0.15s, box-shadow 0.15s",
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -796,27 +850,34 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
       <Section label="Mushroom Size" icon="📏" th={th}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
           {SIZES.map(s => {
+            const hp     = getHP(form.mushroomType, s);
+            const valid  = form.mushroomType ? hp !== null : true;
             const active = form.size === s;
             return (
-              <button key={s} onClick={() => {
-                if (!form.workload) setForm(prev => ({ ...prev, size: s, workload: String(SIZE_HP_APPROX[s]) }));
-                else set("size", s);
-              }} style={{ borderRadius: 14, padding: "10px 4px", cursor: "pointer",
-                fontFamily: "inherit", textAlign: "center", transition: "all 0.15s",
-                border:     `2px solid ${active ? th.accent : th.border}`,
-                background: active ? th.tabActive : th.surfaceAlt,
-                boxShadow:  active ? `0 0 14px ${th.accentGlow}` : "none" }}>
+              <button key={s} disabled={!valid}
+                onClick={() => {
+                  const exactHp = getHP(form.mushroomType, s);
+                  setForm(prev => ({ ...prev, size: s,
+                    workload: exactHp !== null ? String(exactHp) : prev.workload }));
+                }}
+                style={{ borderRadius: 14, padding: "10px 4px",
+                  cursor: valid ? "pointer" : "not-allowed",
+                  fontFamily: "inherit", textAlign: "center", transition: "all 0.15s",
+                  opacity: valid ? 1 : 0.3,
+                  border:     `2px solid ${active ? th.accent : th.border}`,
+                  background: active ? th.tabActive : th.surfaceAlt,
+                  boxShadow:  active ? `0 0 14px ${th.accentGlow}` : "none" }}>
                 <div style={{ fontSize: 20 }}>{SIZE_EMOJI[s]}</div>
                 <div style={{ fontWeight: 800, fontSize: 12, color: active ? th.accent : th.textMid }}>{s}</div>
                 <div style={{ fontSize: 10, color: th.textFaint, marginTop: 2 }}>
-                  ~{(SIZE_HP_APPROX[s] / 1000).toFixed(0)}K
+                  {hp !== null ? `${(hp/1000).toFixed(1)}K` : "N/A"}
                 </div>
               </button>
             );
           })}
         </div>
         <div style={{ fontSize: 11, color: th.textFaint, marginTop: 6 }}>
-          Selecting a size pre-fills an approximate workload — replace it with the exact number from your game!
+          Exact HP from Pikipedia · greyed out = invalid for this type
         </div>
       </Section>
 
@@ -825,8 +886,8 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
           <div style={{ flex: 1 }}>
             <input type="number" value={form.workload}
               onChange={e => set("workload", e.target.value)}
-              placeholder="Workload (exact HP)" style={inp} />
-            <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>Exact workload in-game</div>
+              placeholder="Workload (HP)" style={inp} />
+            <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>Auto-filled from type + size · override if needed</div>
           </div>
           <div style={{ flex: 1 }}>
             <input type="number" value={form.strength}
@@ -944,7 +1005,48 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
           style={{ ...inp, resize: "none", minHeight: 60 }} rows={2} />
       </Section>
 
-      <button onClick={submit} disabled={!form.mushroomType || !form.size || !form.stars} style={{
+      {/* Log past mushroom toggle */}
+      <div style={{ marginBottom: 20 }}>
+        <button
+          onClick={() => set("pastMode", !form.pastMode)}
+          style={{
+            width: "100%", padding: "11px 14px", borderRadius: 12, fontFamily: "inherit",
+            fontWeight: 700, fontSize: 14, cursor: "pointer", transition: "all 0.2s",
+            border: `1.5px solid ${form.pastMode ? th.accent : th.border}`,
+            background: form.pastMode ? `${th.accent}18` : th.surfaceAlt,
+            color: form.pastMode ? th.accent : th.textMid,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}>
+          <span>📦 Log a mushroom that already finished</span>
+          <span style={{ fontSize: 18 }}>{form.pastMode ? "✓" : "+"}</span>
+        </button>
+        {form.pastMode && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, color: th.textFaint, marginBottom: 6 }}>
+              When did it finish? (skips the countdown — goes straight to Completed)
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="datetime-local"
+                value={form.endedAt || localNow()}
+                onChange={e => set("endedAt", e.target.value)}
+                style={{ ...inp, flex: 1 }} />
+              <button onClick={() => set("endedAt", localNow())}
+                style={{ padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${th.border}`,
+                  background: th.surfaceAlt, color: th.accent, fontWeight: 800,
+                  fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                🕐 Now
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: th.textFaint, marginTop: 6 }}>
+              Strength and workload are optional for past logs — fill them for accurate records.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <button onClick={submit}
+        disabled={!form.mushroomType || !form.size || !form.stars || (form.pastMode && !form.endedAt)}
+        style={{
         width: "100%", padding: 15, marginTop: 4,
         background: th.accentGrad, border: "none", borderRadius: 18,
         color: "#fff", fontWeight: 900, fontSize: 16, cursor: "pointer",
@@ -952,7 +1054,7 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
         transition: "opacity 0.2s", letterSpacing: 0.3,
         opacity: (!form.mushroomType || !form.size || !form.stars) ? 0.4 : 1,
       }}>
-        {saved ? "✅ Saved!" : editId ? "💾 Save Changes" : "Register Mushroom 🍄"}
+        {saved ? "✅ Saved!" : editId ? "💾 Save Changes" : form.pastMode ? "📦 Save Past Mushroom" : "Register Mushroom 🍄"}
       </button>
     </div>
   );
