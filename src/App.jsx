@@ -534,7 +534,9 @@ export default function App() {
     );
   });
 
-  const activeAnn = announcements.filter(a => !dismissed.includes(a.id));
+  // Only in-progress mushrooms count for the history badge
+  const activeCount = log.filter(e => !e.endTime || e.endTime > Date.now()).length;
+  const activeAnn   = announcements.filter(a => !dismissed.includes(a.id));
   const analytics = buildAnalytics(log);
 
   if (!authReady) return <Splash th={th} />;
@@ -617,10 +619,10 @@ export default function App() {
                   color: view === item.key ? th.accent : th.textFaint, position: "relative" }}>
                 <span style={{ fontSize: 20 }}>{item.icon}</span>
                 <span>{item.label}</span>
-                {item.key === "history" && log.length > 0 && (
+                {item.key === "history" && activeCount > 0 && (
                   <span style={{ marginLeft: "auto", background: th.accentDark, color: "#fff",
                     borderRadius: 99, fontSize: 11, fontWeight: 900, padding: "2px 7px" }}>
-                    {log.length}
+                    {activeCount}
                   </span>
                 )}
               </button>
@@ -677,10 +679,10 @@ export default function App() {
                 gap: 4, position: "relative", transition: "color 0.2s" }}>
               <span>{item.icon}</span>
               <span className="nav-label">{item.label}</span>
-              {item.key === "history" && log.length > 0 && (
+              {item.key === "history" && activeCount > 0 && (
                 <span style={{ position: "absolute", top: 5, right: 6, background: th.accentDark,
                   color: "#fff", borderRadius: 99, fontSize: 9, fontWeight: 900, padding: "1px 5px" }}>
-                  {log.length}
+                  {activeCount}
                 </span>
               )}
             </button>
@@ -711,8 +713,7 @@ function Splash({ th }) {
 // ─────────────────────────────────────────────────────────────
 // REGISTER VIEW
 // ─────────────────────────────────────────────────────────────
-// inp is defined as a function of th so it picks up theme colors
-// but font-size is always 16px to prevent iOS auto-zoom on focus
+// font-size 16px on all inputs prevents iOS auto-zoom on focus
 function makeInp(th) {
   return {
     width: "100%", background: th.surfaceAlt, border: `1.5px solid ${th.border}`,
