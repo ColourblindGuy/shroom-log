@@ -165,7 +165,9 @@ const NAV_ITEMS = [
 const BLANK_FORM = {
   mushroomType: "", size: "", stars: "", players: 1,
   workload: "", strength: "", notes: "", startTime: "",
-  pastMode: false, endedAt: "", // pastMode = logging a mushroom that already finished
+  timeMode: "calculate", // "calculate" | "direct"
+  directEndTime: "",     // used when timeMode === "direct"
+  pastMode: false, endedAt: "",
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -490,12 +492,15 @@ export default function App() {
   const strengthNum  = parseFloat(form.strength);
   const startMs      = form.startTime ? new Date(form.startTime).getTime() : Date.now();
   const durationMs   = calcDurationMs(workloadNum, strengthNum);
-  const endTime      = durationMs ? new Date(startMs + durationMs) : null;
+  // endTime: calculated from workload/strength, OR directly entered by user
+  const endTime = form.timeMode === "direct" && form.directEndTime
+    ? new Date(form.directEndTime)
+    : (durationMs ? new Date(startMs + durationMs) : null);
 
   async function submit() {
     if (!form.mushroomType || !form.size || !form.stars) return;
-    // In pastMode, endedAt is required
     if (form.pastMode && !form.endedAt) return;
+    if (!form.pastMode && form.timeMode === "direct" && !form.directEndTime) return;
     const existing = editId ? log.find(e => e.id === editId) : null;
 
     // Determine endTime: pastMode uses endedAt, otherwise calculated from workload/strength
@@ -882,43 +887,78 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
       </Section>
 
       <Section label="Battle Details" icon="⚔️" th={th}>
-        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1 }}>
-            <input type="number" value={form.workload}
-              onChange={e => set("workload", e.target.value)}
-              placeholder="Workload (HP)" style={inp} />
-            <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>Auto-filled from type + size · override if needed</div>
-          </div>
-          <div style={{ flex: 1 }}>
-            <input type="number" value={form.strength}
-              onChange={e => set("strength", e.target.value)}
-              placeholder="Everyone's Strength" style={inp} />
-            <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>Total strength in-game</div>
-          </div>
+        {/* Mode toggle */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, background: th.surfaceAlt,
+          borderRadius: 12, padding: 4, border: `1px solid ${th.border}` }}>
+          {[
+            { key: "calculate", label: "🧮 Calculate", hint: "From workload + strength" },
+            { key: "direct",    label: "📅 Direct",    hint: "I know the end time" },
+          ].map(m => (
+            <button key={m.key} onClick={() => set("timeMode", m.key)} style={{
+              flex: 1, padding: "8px 6px", borderRadius: 9, border: "none",
+              fontFamily: "inherit", fontSize: 12, fontWeight: 800, cursor: "pointer",
+              transition: "all 0.2s",
+              background: form.timeMode === m.key ? th.tabActive : "transparent",
+              color: form.timeMode === m.key ? th.accent : th.textFaint,
+              boxShadow: form.timeMode === m.key ? `0 0 10px ${th.accentGlow}` : "none",
+            }}>
+              <div>{m.label}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.7, marginTop: 2 }}>{m.hint}</div>
+            </button>
+          ))}
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-          <div style={{ flex: 1 }}>
-            <input type="datetime-local" value={form.startTime || localNow()}
-              onChange={e => set("startTime", e.target.value)}
-              style={inp} />
-          </div>
-          <button
-            onClick={() => set("startTime", localNow())}
-            title="Set to right now"
-            style={{
-              padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${th.border}`,
-              background: th.surfaceAlt, color: th.accent, fontWeight: 800,
-              fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-              whiteSpace: "nowrap", transition: "all 0.15s", flexShrink: 0,
-              boxShadow: `0 0 0 0 ${th.accentGlow}`,
-            }}
-          >
-            🕐 Now
-          </button>
-        </div>
-        <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5, marginBottom: 10 }}>
-          Battle start time — tap Now to use the current time
-        </div>
+
+        {form.timeMode === "calculate" ? (
+          <>
+            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <input type="number" value={form.workload}
+                  onChange={e => set("workload", e.target.value)}
+                  placeholder="Workload (HP)" style={inp} />
+                <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>
+                  Auto-filled · override if needed
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <input type="number" value={form.strength}
+                  onChange={e => set("strength", e.target.value)}
+                  placeholder="Everyone's Strength" style={inp} />
+                <div style={{ fontSize: 11, color: th.textFaint, marginTop: 5 }}>Total strength in-game</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <input type="datetime-local" value={form.startTime || localNow()}
+                  onChange={e => set("startTime", e.target.value)} style={inp} />
+              </div>
+              <button onClick={() => set("startTime", localNow())} style={{
+                padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${th.border}`,
+                background: th.surfaceAlt, color: th.accent, fontWeight: 800,
+                fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+              }}>🕐 Now</button>
+            </div>
+            <div style={{ fontSize: 11, color: th.textFaint, marginBottom: 10 }}>
+              Battle start time
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <input type="datetime-local" value={form.directEndTime}
+                  onChange={e => set("directEndTime", e.target.value)} style={inp} />
+              </div>
+              <button onClick={() => set("directEndTime", localNow())} style={{
+                padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${th.border}`,
+                background: th.surfaceAlt, color: th.accent, fontWeight: 800,
+                fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+              }}>🕐 Now</button>
+            </div>
+            <div style={{ fontSize: 11, color: th.textFaint, marginBottom: 10 }}>
+              When does / did the mushroom end?
+            </div>
+          </>
+        )}
 
         {endTime && (
           <div style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
@@ -1004,48 +1044,11 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
           placeholder="Location, squad tips, friends…"
           style={{ ...inp, resize: "none", minHeight: 60 }} rows={2} />
       </Section>
-
-      {/* Log past mushroom toggle */}
-      <div style={{ marginBottom: 20 }}>
-        <button
-          onClick={() => set("pastMode", !form.pastMode)}
-          style={{
-            width: "100%", padding: "11px 14px", borderRadius: 12, fontFamily: "inherit",
-            fontWeight: 700, fontSize: 14, cursor: "pointer", transition: "all 0.2s",
-            border: `1.5px solid ${form.pastMode ? th.accent : th.border}`,
-            background: form.pastMode ? `${th.accent}18` : th.surfaceAlt,
-            color: form.pastMode ? th.accent : th.textMid,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-          }}>
-          <span>📦 Log a mushroom that already finished</span>
-          <span style={{ fontSize: 18 }}>{form.pastMode ? "✓" : "+"}</span>
-        </button>
-        {form.pastMode && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, color: th.textFaint, marginBottom: 6 }}>
-              When did it finish? (skips the countdown — goes straight to Completed)
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="datetime-local"
-                value={form.endedAt || localNow()}
-                onChange={e => set("endedAt", e.target.value)}
-                style={{ ...inp, flex: 1 }} />
-              <button onClick={() => set("endedAt", localNow())}
-                style={{ padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${th.border}`,
-                  background: th.surfaceAlt, color: th.accent, fontWeight: 800,
-                  fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-                🕐 Now
-              </button>
-            </div>
-            <div style={{ fontSize: 11, color: th.textFaint, marginTop: 6 }}>
-              Strength and workload are optional for past logs — fill them for accurate records.
-            </div>
-          </div>
-        )}
-      </div>
-
+      
       <button onClick={submit}
-        disabled={!form.mushroomType || !form.size || !form.stars || (form.pastMode && !form.endedAt)}
+        disabled={!form.mushroomType || !form.size || !form.stars
+          || (form.pastMode && !form.endedAt)
+          || (!form.pastMode && form.timeMode === "direct" && !form.directEndTime)}
         style={{
         width: "100%", padding: 15, marginTop: 4,
         background: th.accentGrad, border: "none", borderRadius: 18,
