@@ -14,6 +14,8 @@ import { loadLogs, addLog, editLog, removeLog } from "./api/logs";
 import { loadAnnouncements } from "./api/announcements";
 import { useWindowSize } from "./hooks/useWindowSize";
 import AuthScreen from "./components/AuthScreen";
+import FriendsView from "./components/FriendsView";
+import { subscribeFriendRequests } from "./api/friends";
 
 // ─────────────────────────────────────────────────────────────
 // THEMES
@@ -155,9 +157,10 @@ export function validSizes(mushroomType) {
   return SIZES.filter((_, i) => row[i] !== null);
 }
 
-const NAV_ITEMS = [
+let NAV_ITEMS = [
   { key: "register",  label: "Register",  icon: "✏️" },
   { key: "history",   label: "History",   icon: "📋" },
+  { key: "friends",   label: "Friends",   icon: "👥" },
   { key: "analytics", label: "Analytics", icon: "📊" },
   { key: "settings",  label: "Settings",  icon: "⚙️" },
 ];
@@ -451,6 +454,7 @@ export default function App() {
   const [dismissed, setDismissed] = useState(() => {
     try { return JSON.parse(localStorage.getItem("dismissed_ann") || "[]"); } catch { return []; }
   });
+  const [friendRequests, setFriendRequests] = useState([]);
   const scheduledRefs = useRef({});
 
   useEffect(() => {
@@ -465,6 +469,14 @@ export default function App() {
   useEffect(() => {
     log.forEach(e => { if (e.endTime && !scheduledRefs.current[e.id]) scheduleNotif(e); });
   }, [log, notif]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeFriendRequests(user.uid, reqs => {
+      setFriendRequests(reqs.filter(r => r.status === "pending"));
+    });
+    return unsub;
+  }, [user]);
 
   function scheduleNotif(entry) {
     if (!notif || !entry.endTime) return;
@@ -587,6 +599,7 @@ export default function App() {
   const activeCount = log.filter(e => !e.endTime || e.endTime > Date.now()).length;
   const activeAnn   = announcements.filter(a => !dismissed.includes(a.id));
   const analytics = buildAnalytics(log);
+  const friendRequestCount = friendRequests.length;
 
   if (!authReady) return <Splash th={th} />;
   if (!user)      return <AuthScreen />;
@@ -622,6 +635,7 @@ export default function App() {
         startMs={startMs} submit={submit} saved={saved} notif={notif} />
     );
     if (view === "history")   return <HistoryView {...shared} />;
+    if (view === "friends")   return <FriendsView th={th} user={user} friendRequests={friendRequests} />;
     if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} />;
     return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
@@ -672,6 +686,12 @@ export default function App() {
                   <span style={{ marginLeft: "auto", background: th.accentDark, color: "#fff",
                     borderRadius: 99, fontSize: 11, fontWeight: 900, padding: "2px 7px" }}>
                     {activeCount}
+                  </span>
+                )}
+                {item.key === "friends" && friendRequestCount > 0 && (
+                  <span style={{ marginLeft: "auto", background: th.warning, color: "#fff",
+                    borderRadius: 99, fontSize: 11, fontWeight: 900, padding: "2px 7px" }}>
+                    {friendRequestCount}
                   </span>
                 )}
               </button>
@@ -732,6 +752,12 @@ export default function App() {
                 <span style={{ position: "absolute", top: 5, right: 6, background: th.accentDark,
                   color: "#fff", borderRadius: 99, fontSize: 9, fontWeight: 900, padding: "1px 5px" }}>
                   {activeCount}
+                </span>
+              )}
+              {item.key === "friends" && friendRequestCount > 0 && (
+                <span style={{ position: "absolute", top: 5, right: 6, background: th.warning,
+                  color: "#fff", borderRadius: 99, fontSize: 9, fontWeight: 900, padding: "1px 5px" }}>
+                  {friendRequestCount}
                 </span>
               )}
             </button>
