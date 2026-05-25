@@ -262,6 +262,41 @@ export async function updateSharedMushroom(mushroomId, entry) {
   });
 }
 
+// Upgrade a personal log entry to shared (creates shared doc + roster)
+export async function upgradeToShared(entry, profile, logFirebaseId) {
+  const uid = myUid();
+  const numericEndTime = entry.endTime
+    ? (entry.endTime instanceof Date ? entry.endTime.getTime() : typeof entry.endTime === 'number' ? entry.endTime : null)
+    : null;
+
+  const sharedRef = await addDoc(collection(db, "mushrooms"), {
+    createdBy:     uid,
+    createdByName: profile.displayName,
+    mushroomType:  entry.mushroomType,
+    size:          entry.size,
+    workload:      Number(entry.workload) || null,
+    strength:      Number(entry.strength) || null,
+    endTime:       numericEndTime,
+    notes:         entry.notes || "",
+    stars:         entry.stars || "",
+    players:       Number(entry.players) || 1,
+    status:        numericEndTime && numericEndTime <= Date.now() ? "completed" : "active",
+    createdAt:     serverTimestamp(),
+  });
+  const sharedMushroomId = sharedRef.id;
+
+  const rosterId = await createRoster(profile.displayName);
+
+  await updateDoc(doc(db, "users", uid, "logs", logFirebaseId), {
+    sharedMushroomId,
+    rosterId,
+    isShared: true,
+    createdBy: uid,
+  });
+
+  return { sharedMushroomId, rosterId };
+}
+
 // ── Mushroom Invitations ──────────────────────────────────────
 
 // Host invites a friend to a shared mushroom

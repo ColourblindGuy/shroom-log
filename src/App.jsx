@@ -18,7 +18,7 @@ import FriendsView from "./components/FriendsView";
 import { subscribeFriendRequests, subscribeMushroomInvites, subscribeFriends,
   registerSharedMushroom, getSharedMushroom, updateSharedMushroom, getRoster,
   acceptFriendRequest, declineFriendRequest, declineMushroomInvite,
-  acceptMushroomInvite, inviteFriendToMushroom } from "./api/friends";
+  acceptMushroomInvite, inviteFriendToMushroom, upgradeToShared, getProfile } from "./api/friends";
 
 // ─────────────────────────────────────────────────────────────
 // THEMES
@@ -561,7 +561,8 @@ export default function App() {
             const roster = await getRoster(existing.rosterId);
             const existingUids = new Set(roster?.members.map(m => m.uid) || []);
             const newFriends = invitedFriends.filter(f => !existingUids.has(f.uid));
-            const prof = { displayName: user.displayName || "Trainer" };
+            const profData = await getProfile(user.uid);
+            const prof = { displayName: profData?.displayName || user.displayName || "Trainer" };
             const mushroomInfo = { mushroomType: entry.mushroomType, size: entry.size, endTime: resolvedEndTime };
             await Promise.all(newFriends.map(f =>
               inviteFriendToMushroom(existing.rosterId, existing.sharedMushroomId, mushroomInfo, f.uid, f.displayName, prof.displayName)
@@ -571,7 +572,8 @@ export default function App() {
         setInvitedFriends([]);
       } else if (!editId && invitedFriends.length > 0) {
         // Create as shared mushroom + send invites
-        const prof = { displayName: user.displayName || "Trainer" };
+        const profData = await getProfile(user.uid);
+        const prof = { displayName: profData?.displayName || user.displayName || "Trainer" };
         const result = await registerSharedMushroom(entry, prof, invitedFriends);
         const logEntry = { ...entry, _firebaseId: result.logFirebaseId,
           sharedMushroomId: result.sharedMushroomId, rosterId: result.rosterId, isShared: true, createdBy: user.uid };
@@ -628,12 +630,43 @@ export default function App() {
     catch (e) { console.error("decline failed", e); }
   }
   async function handleAcceptMushroom(invite) {
-    const prof = { displayName: user.displayName || "Trainer" };
+    const profData = await getProfile(user.uid);
+    const prof = { displayName: profData?.displayName || user.displayName || "Trainer" };
     try {
       const logEntry = await acceptMushroomInvite(invite, prof);
       setLog(prev => [logEntry, ...prev]);
     } catch (e) { alert(e.message || "Failed to join. Try again."); }
   }
+  async function handleInviteFriends(entry, friendsToInvite, mushroomInfo) {
+    if (friendsToInvite.length === 0) return 0;
+    const profData = await getProfile(user.uid);
+    const prof = { displayName: profData?.displayName || user.displayName || "Trainer" };
+
+    let rosterId = entry.rosterId;
+    let sharedMushroomId = entry.sharedMushroomId;
+
+    if (!rosterId || !sharedMushroomId) {
+      const result = await upgradeToShared(entry, prof, entry._firebaseId);
+      sharedMushroomId = result.sharedMushroomId;
+      rosterId = result.rosterId;
+      setLog(prev => prev.map(e =>
+        e.id === entry.id
+          ? { ...e, sharedMushroomId, rosterId, isShared: true, createdBy: user.uid }
+          : e
+      ));
+    }
+
+    const roster = await getRoster(rosterId);
+    const existingUids = new Set(roster?.members.map(m => m.uid) || []);
+    const newFriends = friendsToInvite.filter(f => !existingUids.has(f.uid));
+    if (newFriends.length === 0) return 0;
+
+    await Promise.all(newFriends.map(f =>
+      inviteFriendToMushroom(rosterId, sharedMushroomId, mushroomInfo, f.uid, f.displayName, prof.displayName)
+    ));
+    return newFriends.length;
+  }
+
   async function handleDeclineMushroom(invite) {
     try { await declineMushroomInvite(invite.rosterId); }
     catch (e) { console.error("decline invite failed", e); }
@@ -688,7 +721,7 @@ export default function App() {
 
   const shared = { th, log: filteredLog, allLog: log, search, setSearch,
     filterType, setFilterType, onEdit: startEdit, onDelete: deleteEntry,
-    onDeleteAll: deleteAllCompleted };
+    onDeleteAll: deleteAllCompleted, friends, user, onInviteFriends: handleInviteFriends };
 
   function renderContent() {
     if (loading) return (
@@ -734,11 +767,18 @@ export default function App() {
         <aside style={{ width: 240, background: th.sidebar, borderRight: `1px solid ${th.borderFaint}`,
           padding: "24px 14px", display: "flex", flexDirection: "column",
           position: "sticky", top: 0, height: "100vh", flexShrink: 0, zIndex: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28, paddingLeft: 4 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 28 }}>
             <PikminLogo size={44} />
-            <div>
-              <div style={{ fontSize: 19, fontWeight: 900, color: th.accent, letterSpacing: -0.5 }}>Shroom Log</div>
-              <div style={{ fontSize: 10, color: th.textFaint, fontWeight: 700 }}>Pikmin Bloom</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 19, fontWeight: 900, color: th.accent, letterSpacing: -0.5 }}>Shroom Log</div>
+                  <div style={{ fontSize: 10, color: th.textFaint, fontWeight: 700 }}>Pikmin Bloom</div>
+                </div>
+                <NotificationBell th={th} friendRequests={friendRequests} mushroomInvites={mushroomInvites}
+                  onAcceptFriend={handleAcceptFriend} onDeclineFriend={handleDeclineFriend}
+                  onAcceptMushroom={handleAcceptMushroom} onDeclineMushroom={handleDeclineMushroom} />
+              </div>
             </div>
           </div>
           <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -768,12 +808,9 @@ export default function App() {
             ))}
           </nav>
           <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-            <NotificationBell th={th} friendRequests={friendRequests} mushroomInvites={mushroomInvites}
-              onAcceptFriend={handleAcceptFriend} onDeclineFriend={handleDeclineFriend}
-              onAcceptMushroom={handleAcceptMushroom} onDeclineMushroom={handleDeclineMushroom} />
-            <div style={{ fontSize: 11, color: th.textFaint, textAlign: "center" }}>
-              {user.displayName || user.email}
-            </div>
+          <div style={{ fontSize: 11, color: th.textFaint, textAlign: "center" }}>
+            {user.displayName || user.email}
+          </div>
           </div>
         </aside>
 
@@ -1147,7 +1184,7 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
           style={{ ...inp, resize: "none", minHeight: 60 }} rows={2} />
       </Section>
 
-      {friends.length > 0 && (
+      {!editId && friends.length > 0 && (
         <Section label="Invite Friends" icon="🎮" th={th}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {friends.map(f => {
@@ -1203,7 +1240,7 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
 // ─────────────────────────────────────────────────────────────
 // HISTORY VIEW — tabbed: In Progress / Completed
 // ─────────────────────────────────────────────────────────────
-function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilterType, onEdit, onDelete, onDeleteAll }) {
+function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilterType, onEdit, onDelete, onDeleteAll, friends, user, onInviteFriends }) {
   const [histTab, setHistTab] = useState("active");
   // Live clock so active/completed split and "X ago" update every second
   const [now, setNow] = useState(Date.now());
@@ -1292,13 +1329,14 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
       ) : shown.map((entry, i) => (
         <LogCard key={entry.id} entry={entry} index={i}
           isActive={histTab === "active"} th={th}
-          onEdit={onEdit} onDelete={onDelete} />
+          onEdit={onEdit} onDelete={onDelete}
+          friends={friends} user={user} onInviteFriends={onInviteFriends} />
       ))}
     </div>
   );
 }
 
-function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
+function LogCard({ entry, index, isActive, th, onEdit, onDelete, friends, user, onInviteFriends }) {
   const [sharedData, setSharedData] = useState(null);
   const [roster, setRoster] = useState(null);
 
@@ -1318,6 +1356,10 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
   const hasEnd  = !!live.endTime;
   const endDate = hasEnd ? new Date(live.endTime) : null;
   const participants = roster?.members || null;
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteSelected, setInviteSelected] = useState([]);
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteDone, setInviteDone] = useState(false);
 
   return (
     <div className="fade-in" style={{
@@ -1383,6 +1425,91 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
                 <span style={{ fontSize: 12, color: th.textMid, fontWeight: 700 }}>
                   {formatDate(endDate)}
                 </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Invite Friends on card */}
+        {isActive && friends.length > 0 && (
+          <div style={{ marginBottom: 6 }}>
+            {!inviteOpen ? (
+              <button onClick={() => setInviteOpen(true)} style={{
+                width: "100%", padding: "8px 12px", borderRadius: 10,
+                border: `1.5px dashed ${th.border}`, background: th.surfaceAlt,
+                color: th.accent, fontWeight: 700, fontSize: 12,
+                cursor: "pointer", fontFamily: "inherit",
+              }}>
+                🎮 Invite Friends
+              </button>
+            ) : (
+              <div style={{ background: th.surfaceAlt, border: `1px solid ${th.borderFaint}`,
+                borderRadius: 10, padding: "8px 12px", fontSize: 12 }}>
+                <div style={{ fontWeight: 700, color: th.accent, marginBottom: 4 }}>
+                  Invite friends to join
+                </div>
+                {!entry.rosterId && (
+                  <div style={{ fontSize: 11, color: th.textFaint, marginBottom: 6 }}>
+                    This will create a shared mushroom for this entry
+                  </div>
+                )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                  {friends.filter(f => !participants?.some(p => p.uid === f.uid)).map(f => {
+                    const sel = inviteSelected.some(s => s.uid === f.uid);
+                    return (
+                      <button key={f.uid} onClick={() => {
+                        setInviteSelected(prev =>
+                          sel ? prev.filter(s => s.uid !== f.uid) : [...prev, { uid: f.uid, displayName: f.displayName }]
+                        );
+                      }} style={{
+                        padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 600,
+                        cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                        border: `1.5px solid ${sel ? th.accent : th.border}`,
+                        background: sel ? th.tabActive : th.bg,
+                        color: sel ? th.accent : th.textFaint,
+                      }}>
+                        {sel ? "✓ " : ""}{f.displayName}
+                      </button>
+                    );
+                  })}
+                  {friends.filter(f => !participants?.some(p => p.uid === f.uid)).length === 0 && (
+                    <div style={{ fontSize: 11, color: th.textFaint, fontStyle: "italic" }}>
+                      All your friends are already in this mushroom
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={async () => {
+                    if (inviteSelected.length === 0) return;
+                    setInviteSending(true);
+                    const sent = await onInviteFriends(entry, inviteSelected, {
+                      mushroomType: live.mushroomType,
+                      size: live.size,
+                      endTime: live.endTime,
+                    });
+                    setInviteSending(false);
+                    if (sent > 0) {
+                      setInviteDone(true);
+                      setInviteSelected([]);
+                      setTimeout(() => { setInviteDone(false); setInviteOpen(false); }, 2000);
+                    }
+                  }} disabled={inviteSelected.length === 0 || inviteSending} style={{
+                    padding: "6px 14px", borderRadius: 8, border: "none",
+                    background: inviteDone ? th.positive : th.accentGrad,
+                    color: "#fff", fontWeight: 800, fontSize: 12,
+                    cursor: inviteSelected.length === 0 ? "default" : "pointer",
+                    fontFamily: "inherit", opacity: inviteSelected.length === 0 ? 0.5 : 1,
+                  }}>
+                    {inviteSending ? "Sending…" : inviteDone ? "✅ Sent!" : `Send (${inviteSelected.length})`}
+                  </button>
+                  <button onClick={() => { setInviteOpen(false); setInviteSelected([]); }} style={{
+                    padding: "6px 14px", borderRadius: 8, border: `1px solid ${th.border}`,
+                    background: th.bg, color: th.textMid, fontWeight: 700, fontSize: 12,
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
           </div>
