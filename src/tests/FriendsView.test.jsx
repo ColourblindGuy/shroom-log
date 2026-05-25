@@ -20,9 +20,8 @@ const mockFriendsApi = vi.hoisted(() => ({
   cancelFriendRequest: vi.fn(),
   subscribeSentRequests: vi.fn(() => () => {}),
   subscribeFriends: vi.fn(() => () => {}),
-  loadMySharedMushrooms: vi.fn(() => Promise.resolve([])),
   declineMushroomInvite: vi.fn(),
-  joinSharedMushroom: vi.fn(),
+  acceptMushroomInvite: vi.fn(),
 }));
 
 // ── Mock theme constants from App ──
@@ -161,7 +160,7 @@ describe("FriendsView", () => {
   it("switches to notifications tab and shows empty state", async () => {
     renderView();
 
-    const notifTab = await screen.findByText("🔔 Notifications");
+    const notifTab = await screen.findByText("🔔 Requests Pending");
     expect(notifTab).toBeDefined();
 
     await userEvent.click(notifTab);
@@ -175,7 +174,7 @@ describe("FriendsView", () => {
       ],
     });
 
-    const notifTab = await screen.findByText("🔔 Notifications");
+    const notifTab = await screen.findByText("🔔 Requests Pending");
     await userEvent.click(notifTab);
 
     expect(screen.getByText("Requestor")).toBeDefined();

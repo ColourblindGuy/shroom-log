@@ -15,7 +15,10 @@ import { loadAnnouncements } from "./api/announcements";
 import { useWindowSize } from "./hooks/useWindowSize";
 import AuthScreen from "./components/AuthScreen";
 import FriendsView from "./components/FriendsView";
-import { subscribeFriendRequests } from "./api/friends";
+import { subscribeFriendRequests, subscribeMushroomInvites, subscribeFriends,
+  registerSharedMushroom, getSharedMushroom, updateSharedMushroom, getRoster,
+  acceptFriendRequest, declineFriendRequest, declineMushroomInvite,
+  acceptMushroomInvite, inviteFriendToMushroom } from "./api/friends";
 
 // ─────────────────────────────────────────────────────────────
 // THEMES
@@ -455,6 +458,9 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("dismissed_ann") || "[]"); } catch { return []; }
   });
   const [friendRequests, setFriendRequests] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [mushroomInvites, setMushroomInvites] = useState([]);
+  const [invitedFriends, setInvitedFriends] = useState([]);
   const scheduledRefs = useRef({});
 
   useEffect(() => {
@@ -474,6 +480,20 @@ export default function App() {
     if (!user) return;
     const unsub = subscribeFriendRequests(user.uid, reqs => {
       setFriendRequests(reqs.filter(r => r.status === "pending"));
+    });
+    return unsub;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeFriends(user.uid, setFriends);
+    return unsub;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeMushroomInvites(user.uid, invites => {
+      setMushroomInvites(invites.filter(r => r.status === "pending"));
     });
     return unsub;
   }, [user]);
@@ -534,6 +554,30 @@ export default function App() {
       if (editId && existing?._firebaseId) {
         await editLog(existing._firebaseId, entry);
         setLog(prev => prev.map(e => e.id === editId ? { ...entry, _firebaseId: existing._firebaseId } : e));
+        if (existing.sharedMushroomId) {
+          await updateSharedMushroom(existing.sharedMushroomId, entry);
+          // Post-creation invites: send to friends not already in the roster
+          if (invitedFriends.length > 0) {
+            const roster = await getRoster(existing.rosterId);
+            const existingUids = new Set(roster?.members.map(m => m.uid) || []);
+            const newFriends = invitedFriends.filter(f => !existingUids.has(f.uid));
+            const prof = { displayName: user.displayName || "Trainer" };
+            const mushroomInfo = { mushroomType: entry.mushroomType, size: entry.size, endTime: resolvedEndTime };
+            await Promise.all(newFriends.map(f =>
+              inviteFriendToMushroom(existing.rosterId, existing.sharedMushroomId, mushroomInfo, f.uid, f.displayName, prof.displayName)
+            ));
+          }
+        }
+        setInvitedFriends([]);
+      } else if (!editId && invitedFriends.length > 0) {
+        // Create as shared mushroom + send invites
+        const prof = { displayName: user.displayName || "Trainer" };
+        const result = await registerSharedMushroom(entry, prof, invitedFriends);
+        const logEntry = { ...entry, _firebaseId: result.logFirebaseId,
+          sharedMushroomId: result.sharedMushroomId, rosterId: result.rosterId, isShared: true, createdBy: user.uid };
+        setLog(prev => [logEntry, ...prev]);
+        if (!form.pastMode) scheduleNotif(logEntry);
+        setInvitedFriends([]);
       } else {
         const fbId = await addLog(entry);
         setLog(prev => [{ ...entry, _firebaseId: fbId }, ...prev]);
@@ -557,11 +601,12 @@ export default function App() {
       startTime:    entry.startTime || "",
     });
     setEditId(entry.id);
+    setInvitedFriends([]);
     setView("register");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function cancelEdit() { setEditId(null); setForm(BLANK_FORM); }
+  function cancelEdit() { setEditId(null); setForm(BLANK_FORM); setInvitedFriends([]); }
 
   async function deleteEntry(id) {
     const entry = log.find(e => e.id === id);
@@ -570,7 +615,28 @@ export default function App() {
     try {
       if (entry._firebaseId) await removeLog(entry._firebaseId);
       setLog(prev => prev.filter(e => e.id !== id));
-    } catch { alert("Failed to delete."); }
+    } catch (e) { console.error(e); alert("Failed to delete."); }
+  }
+
+  // ── Notification handlers ──
+  async function handleAcceptFriend(req) {
+    try { await acceptFriendRequest(req.fromUid, req.fromName, req.fromCode); }
+    catch (e) { console.error("accept failed", e); alert("Failed to accept request."); }
+  }
+  async function handleDeclineFriend(req) {
+    try { await declineFriendRequest(req.fromUid); }
+    catch (e) { console.error("decline failed", e); }
+  }
+  async function handleAcceptMushroom(invite) {
+    const prof = { displayName: user.displayName || "Trainer" };
+    try {
+      const logEntry = await acceptMushroomInvite(invite, prof);
+      setLog(prev => [logEntry, ...prev]);
+    } catch (e) { alert(e.message || "Failed to join. Try again."); }
+  }
+  async function handleDeclineMushroom(invite) {
+    try { await declineMushroomInvite(invite.rosterId); }
+    catch (e) { console.error("decline invite failed", e); }
   }
 
   function dismissAnn(id) {
@@ -633,10 +699,13 @@ export default function App() {
     if (view === "register") return (
       <RegisterView th={th} form={form} setForm={setForm} editId={editId} cancelEdit={cancelEdit}
         selectedType={selectedType} endTime={endTime} durationMs={durationMs}
-        startMs={startMs} submit={submit} saved={saved} notif={notif} />
+        startMs={startMs} submit={submit} saved={saved} notif={notif}
+        friends={friends} invitedFriends={invitedFriends} setInvitedFriends={setInvitedFriends} />
     );
     if (view === "history")   return <HistoryView {...shared} />;
-    if (view === "friends")   return <FriendsView th={th} user={user} friendRequests={friendRequests} />;
+    if (view === "friends")   return <FriendsView th={th} user={user} friendRequests={friendRequests}
+      mushroomInvites={mushroomInvites}
+      onLogAdded={logEntry => setLog(prev => [logEntry, ...prev])} />;
     if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} />;
     return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
@@ -698,7 +767,10 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
+            <NotificationBell th={th} friendRequests={friendRequests} mushroomInvites={mushroomInvites}
+              onAcceptFriend={handleAcceptFriend} onDeclineFriend={handleDeclineFriend}
+              onAcceptMushroom={handleAcceptMushroom} onDeclineMushroom={handleDeclineMushroom} />
             <div style={{ fontSize: 11, color: th.textFaint, textAlign: "center" }}>
               {user.displayName || user.email}
             </div>
@@ -735,6 +807,9 @@ export default function App() {
             </div>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <NotificationBell th={th} friendRequests={friendRequests} mushroomInvites={mushroomInvites}
+              onAcceptFriend={handleAcceptFriend} onDeclineFriend={handleDeclineFriend}
+              onAcceptMushroom={handleAcceptMushroom} onDeclineMushroom={handleDeclineMushroom} />
           </div>
         </div>
         <nav style={{ display: "flex", borderTop: `1px solid ${th.borderFaint}` }}>
@@ -798,7 +873,7 @@ function makeInp(th) {
   };
 }
 
-function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, endTime, durationMs, startMs, submit, saved, notif }) {
+function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, endTime, durationMs, startMs, submit, saved, notif, friends, invitedFriends, setInvitedFriends }) {
   // useCallback so `set` is stable — prevents the entire form re-rendering
   // every child button just because an unrelated field changed
   const set = useCallback(
@@ -1071,6 +1146,37 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
           placeholder="Location, squad tips, friends…"
           style={{ ...inp, resize: "none", minHeight: 60 }} rows={2} />
       </Section>
+
+      {friends.length > 0 && (
+        <Section label="Invite Friends" icon="🎮" th={th}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {friends.map(f => {
+              const selected = invitedFriends.some(fr => fr.uid === f.uid);
+              return (
+                <button key={f.uid} onClick={() => {
+                  setInvitedFriends(prev =>
+                    selected ? prev.filter(fr => fr.uid !== f.uid) : [...prev, { uid: f.uid, displayName: f.displayName }]
+                  );
+                }} style={{
+                  padding: "8px 14px", borderRadius: 10, border: `2px solid ${selected ? th.accent : th.border}`,
+                  background: selected ? th.tabActive : th.surfaceAlt,
+                  color: selected ? th.accent : th.textMid,
+                  fontWeight: 700, fontSize: 12, cursor: "pointer",
+                  fontFamily: "inherit", transition: "all 0.15s",
+                  boxShadow: selected ? `0 0 10px ${th.accentGlow}` : "none",
+                }}>
+                  {selected ? "✓ " : ""}{f.displayName}
+                </button>
+              );
+            })}
+          </div>
+          {invitedFriends.length > 0 && (
+            <div style={{ fontSize: 11, color: th.positive, marginTop: 8 }}>
+              🎮 Will send invites to {invitedFriends.length} friend{invitedFriends.length > 1 ? "s" : ""}
+            </div>
+          )}
+        </Section>
+      )}
       
       <button onClick={submit}
         disabled={!form.mushroomType || !form.size || !form.stars
@@ -1193,9 +1299,25 @@ function HistoryView({ th, log, allLog, search, setSearch, filterType, setFilter
 }
 
 function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
-  const t       = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-  const hasEnd  = !!entry.endTime;
-  const endDate = hasEnd ? new Date(entry.endTime) : null;
+  const [sharedData, setSharedData] = useState(null);
+  const [roster, setRoster] = useState(null);
+
+  // Fetch shared doc for live data + roster for participant list
+  useEffect(() => {
+    if (entry.sharedMushroomId) {
+      getSharedMushroom(entry.sharedMushroomId).then(setSharedData).catch(() => {});
+    }
+    if (entry.rosterId) {
+      getRoster(entry.rosterId).then(setRoster).catch(() => {});
+    }
+  }, [entry.sharedMushroomId, entry.rosterId]);
+
+  // Use live shared data if available (edits by anyone propagate)
+  const live = sharedData || entry;
+  const t    = MUSHROOM_TYPES.find(x => x.id === live.mushroomType);
+  const hasEnd  = !!live.endTime;
+  const endDate = hasEnd ? new Date(live.endTime) : null;
+  const participants = roster?.members || null;
 
   return (
     <div className="fade-in" style={{
@@ -1207,18 +1329,25 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
       animationDelay: `${index * 25}ms`,
     }}>
       <div style={{ width: 12, height: 12, borderRadius: "50%", marginTop: 4, flexShrink: 0,
-        background: t?.color, boxShadow: isActive ? `0 0 8px ${t?.glow}` : "none" }} />
+        background: t?.color || th.textFaint,
+        boxShadow: isActive ? `0 0 8px ${t?.glow}` : "none" }} />
 
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header row */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           <span style={{ fontWeight: 900, fontSize: 15, color: isActive ? th.text : th.textMid }}>
-            {t?.emoji} {t?.label}
+            {t?.emoji || "🍄"} {t?.label || "Unknown"}
           </span>
-          <span style={{ fontSize: 12, color: th.textMid }}>{SIZE_EMOJI[entry.size]} {entry.size}</span>
-          <span style={{ fontSize: 12 }}>{entry.stars}</span>
+          <span style={{ fontSize: 12, color: th.textMid }}>{SIZE_EMOJI[live.size]} {live.size}</span>
+          <span style={{ fontSize: 12 }}>{live.stars}</span>
+          {live.isShared && (
+            <span style={{ fontSize: 10, background: th.accentDark, color: "#fff",
+              borderRadius: 99, padding: "2px 8px", fontWeight: 800 }}>
+              👥 {participants ? `${participants.length} player${participants.length > 1 ? "s" : ""}` : "Shared"}
+            </span>
+          )}
           <span style={{ fontSize: 13, marginLeft: "auto", color: th.textFaint }}>
-            {"👤".repeat(Math.min(entry.players || 1, 5))}
+            {"👤".repeat(Math.min(live.players || 1, 5))}
           </span>
         </div>
 
@@ -1229,19 +1358,16 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
 
             {isActive ? (
               <>
-                {/* Time remaining */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span style={{ fontSize: 12, color: th.textMid }}>⏱ Time left</span>
-                  <Countdown endTime={entry.endTime} th={th} />
+                  <Countdown endTime={live.endTime} th={th} />
                 </div>
-                {/* Estimated end date */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <span style={{ fontSize: 12, color: th.textFaint }}>📅 Ends</span>
                   <span style={{ fontSize: 12, color: th.accent, fontWeight: 700 }}>
                     {formatDate(endDate)}
                   </span>
                 </div>
-                {/* Discord timestamp */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <code style={{ fontSize: 10, color: th.textMid, fontFamily: "monospace",
                     background: th.surfaceAlt, padding: "3px 8px", borderRadius: 6,
@@ -1252,7 +1378,6 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
                 </div>
               </>
             ) : (
-              /* Completed: just show the date it ended, nothing else */
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: th.textFaint }}>✅ Ended</span>
                 <span style={{ fontSize: 12, color: th.textMid, fontWeight: 700 }}>
@@ -1263,14 +1388,40 @@ function LogCard({ entry, index, isActive, th, onEdit, onDelete }) {
           </div>
         )}
 
-        {entry.notes && (
+        {entry.rosterId && (
+          <div style={{ background: th.surfaceAlt, border: `1px solid ${th.borderFaint}`,
+            borderRadius: 10, padding: "8px 12px", marginBottom: 6, fontSize: 12 }}>
+            <div style={{ fontWeight: 700, color: th.accent, marginBottom: 4 }}>
+              🎮 Shared Mushroom
+            </div>
+            {entry.sharedBy && (
+              <div style={{ color: th.textMid }}>Invited by <strong>{entry.sharedBy}</strong></div>
+            )}
+            {participants && participants.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                {participants.map((p, i) => (
+                  <span key={p.uid} style={{
+                    background: th.bg, borderRadius: 99, padding: "2px 8px",
+                    fontSize: 11, color: th.textFaint, fontWeight: 600,
+                    border: `1px solid ${th.borderFaint}`,
+                  }}>
+                    #{i + 1} {p.displayName}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {live.notes && (
           <div style={{ fontSize: 12, color: th.textMid, fontStyle: "italic", marginTop: 4 }}>
-            "{entry.notes}"
+            "{live.notes}"
           </div>
         )}
         <div style={{ fontSize: 11, color: th.textFaint, marginTop: 4 }}>Registered {entry.date}</div>
       </div>
 
+      {/* Everyone can edit/delete their own copy */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <button onClick={() => onEdit(entry)} style={{ background: "transparent", border: "none",
           fontSize: 16, cursor: "pointer", padding: "2px 4px" }} title="Edit">✏️</button>
@@ -1544,6 +1695,121 @@ function NotifSetting({ th }) {
         }}>
         {label}
       </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATION BELL — shows pending friend requests + mushroom invites
+// ─────────────────────────────────────────────────────────────
+function NotificationBell({ th, friendRequests, mushroomInvites, onAcceptFriend, onDeclineFriend, onAcceptMushroom, onDeclineMushroom }) {
+  const [open, setOpen] = useState(false);
+  const total = friendRequests.length + mushroomInvites.length;
+  const hasBoth = friendRequests.length > 0 && mushroomInvites.length > 0;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) {
+      if (!e.target.closest("[data-notif-bell]")) setOpen(false);
+    }
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [open]);
+
+  return (
+    <div data-notif-bell style={{ position: "relative" }}>
+      <button onClick={() => setOpen(v => !v)} style={{
+        position: "relative", background: "transparent", border: "none",
+        fontSize: 18, cursor: "pointer", padding: "4px 6px", fontFamily: "inherit",
+        color: total > 0 ? th.accent : th.textFaint,
+        transition: "color 0.2s",
+      }}>
+        🔔
+        {total > 0 && (
+          <span style={{ position: "absolute", top: -2, right: -4,
+            background: th.warning, color: "#fff", borderRadius: 99,
+            fontSize: 9, fontWeight: 900, padding: "1px 5px",
+            lineHeight: 1.3, minWidth: 16, textAlign: "center" }}>
+            {total}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute",
+          top: "100%", right: 0, marginTop: 4,
+          background: th.surface, border: `1px solid ${th.border}`,
+          borderRadius: 14, padding: 12, minWidth: 260, zIndex: 100,
+          boxShadow: `0 8px 32px rgba(0,0,0,0.5)`,
+        }}>
+          {total === 0 ? (
+            <div style={{ fontSize: 12, color: th.textFaint, textAlign: "center", padding: "8px 0" }}>
+              No pending notifications
+            </div>
+          ) : (
+            <>
+              {friendRequests.map(req => (
+                <div key={req.fromUid} style={{
+                  background: th.surfaceAlt, borderRadius: 10, padding: "10px 12px", marginBottom: 6,
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: th.text, marginBottom: 6 }}>
+                    👤 Friend request from <strong>{req.fromName}</strong>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => { onAcceptFriend(req); setOpen(false); }} style={{
+                      flex: 1, background: th.accentGrad, border: "none", borderRadius: 8,
+                      color: "#fff", padding: "6px", fontWeight: 800,
+                      fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                    }}>✓ Accept</button>
+                    <button onClick={() => { onDeclineFriend(req); setOpen(false); }} style={{
+                      flex: 1, background: th.surfaceAlt, border: `1px solid ${th.border}`,
+                      borderRadius: 8, color: th.textMid, padding: "6px",
+                      fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                    }}>✕ Decline</button>
+                  </div>
+                </div>
+              ))}
+              {hasBoth && <div style={{ height: 1, background: th.borderFaint, margin: "6px 0" }} />}
+              {mushroomInvites.map(inv => {
+                const t = MUSHROOM_TYPES.find(x => x.id === inv.mushroomType);
+                const invEndTime = inv.endTime ? (typeof inv.endTime.toDate === 'function' ? inv.endTime.toDate().getTime() : typeof inv.endTime === 'number' ? inv.endTime : null) : null;
+                const ms = invEndTime ? invEndTime - Date.now() : null;
+                return (
+                  <div key={inv.rosterId} style={{
+                    background: th.surfaceAlt, borderRadius: 10, padding: "10px 12px", marginBottom: 6,
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: th.text, marginBottom: 2 }}>
+                      {t?.emoji} <strong>{t?.label}</strong> · {SIZE_EMOJI[inv.size]} {inv.size}
+                    </div>
+                    <div style={{ fontSize: 11, color: th.textMid, marginBottom: 2 }}>
+                      From {inv.fromName}
+                    </div>
+                    {invEndTime && (
+                      <div style={{ fontSize: 11, color: ms && ms < 3600000 ? th.warning : th.textFaint, marginBottom: 6 }}>
+                        {ms && ms > 0 ? `Ends in ${formatDuration(ms)}` : "Ended"}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => { onAcceptMushroom(inv); setOpen(false); }} style={{
+                        flex: 1, background: th.accentGrad, border: "none", borderRadius: 8,
+                        color: "#fff", padding: "6px", fontWeight: 800,
+                        fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                      }}>✓ Join</button>
+                      <button onClick={() => { onDeclineMushroom(inv); setOpen(false); }} style={{
+                        flex: 1, background: th.surfaceAlt, border: `1px solid ${th.border}`,
+                        borderRadius: 8, color: th.textMid, padding: "6px",
+                        fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                      }}>✕ Decline</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

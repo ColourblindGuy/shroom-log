@@ -61,29 +61,33 @@ service cloud.firestore {
       allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == requestId);
     }
 
-    // Mushroom invitations
+    // Mushroom invitations: receiver reads/declines;
+    // host (whose uid == request.resource.data.fromUid) can create (invite).
     match /users/{userId}/mushroom_invites/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read:   if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.fromUid;
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Mushroom references (tracks which mushrooms a user has joined)
-    match /users/{userId}/mushroom_refs/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Shared mushrooms
+    // Shared mushroom doc (mutable collaborative data)
+    // Any authenticated user can read/create/update — participants edit together.
+    // Nobody can delete (users only delete their own local copy).
     match /mushrooms/{mushroomId} {
       allow read:   if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.createdBy;
+      allow create: if request.auth != null;
       allow update: if request.auth != null;
       allow delete: if false;
     }
 
-    // Shared mushroom participants
-    match /mushrooms/{mushroomId}/participants/{uid} {
+    // Roster (shared participant tracker — only host + member names)
+    // Any authenticated user can read rosters.
+    // Host creates it (auth.uid == resource.data.hostUid).
+    // Any participant can update (join) — the update sets members.{theirUid}.
+    match /roster/{rosterId} {
       allow read:   if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == uid;
-      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.hostUid;
+      allow update: if request.auth != null;
+      allow delete: if false;
     }
   }
 }

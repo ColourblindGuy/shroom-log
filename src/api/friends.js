@@ -1,36 +1,4 @@
 // src/api/friends.js
-// ─────────────────────────────────────────────────────────────
-// SCHEMA (additions for requests/invitations):
-//
-// friend_codes/{CODE}
-//   uid, displayName
-//
-// users/{uid}/profile/data
-//   displayName, friendCode, createdAt, lastSeen
-//
-// users/{uid}/friends/{friendUid}
-//   displayName, friendCode, addedAt
-//
-// users/{uid}/friend_requests/{requestId}   ← INCOMING requests
-//   fromUid, fromName, fromCode, sentAt, status: "pending"|"accepted"|"declined"
-//
-// users/{uid}/sent_requests/{requestId}     ← track what YOU sent
-//   toUid, toName, toCode, sentAt, status
-//
-// mushrooms/{mushroomId}
-//   createdBy, createdByName, mushroomType, size, workload,
-//   strength, endTime, notes, stars, status, createdAt
-//
-// mushrooms/{mushroomId}/participants/{uid}
-//   displayName, joinedAt, strength, stars, confirmed
-//
-// users/{uid}/mushroom_invites/{mushroomId}  ← INCOMING invitations
-//   mushroomId, mushroomType, size, endTime,
-//   fromUid, fromName, sentAt, status: "pending"|"accepted"|"declined"
-//
-// users/{uid}/mushroom_refs/{mushroomId}
-//   role, joinedAt, mushroomId
-// ─────────────────────────────────────────────────────────────
 
 import { db, auth } from "../firebase";
 import {
@@ -49,9 +17,6 @@ function profileRef(userId) {
 function friendsRef(userId)         { return collection(db, "users", userId, "friends"); }
 function friendReqRef(userId)       { return collection(db, "users", userId, "friend_requests"); }
 function sentReqRef(userId)         { return collection(db, "users", userId, "sent_requests"); }
-function mushroomRef(id)            { return doc(db, "mushrooms", id); }
-function participantsRef(id)        { return collection(db, "mushrooms", id, "participants"); }
-function mushRefRef(userId, mId)    { return doc(db, "users", userId, "mushroom_refs", mId); }
 function logsRef(userId)            { return collection(db, "users", userId, "logs"); }
 function invitesRef(userId)         { return collection(db, "users", userId, "mushroom_invites"); }
 
@@ -229,14 +194,83 @@ export async function removeFriend(friendUid) {
   try { await deleteDoc(doc(friendsRef(friendUid), uid)); } catch {}
 }
 
+// ── Roster (shared participant tracker) ───────────────────────
+
+// A lightweight doc that just tracks who's part of a shared mushroom group.
+// Each member has their own independent log entry (snapshot).
+// The roster only stores participant names — no mushroom data.
+
+function rosterRef(rosterId) {
+  return doc(db, "roster", rosterId);
+}
+
+// Create a roster when host invites friends
+export async function createRoster(hostDisplayName) {
+  const uid = myUid();
+  const ref = await addDoc(collection(db, "roster"), {
+    hostUid: uid,
+    hostName: hostDisplayName,
+    createdAt: serverTimestamp(),
+    members: { [uid]: hostDisplayName },
+  });
+  return ref.id;
+}
+
+// Add current user to a roster (when accepting an invite)
+export async function joinRoster(rosterId, displayName) {
+  const uid = myUid();
+  await updateDoc(rosterRef(rosterId), {
+    [`members.${uid}`]: displayName,
+  });
+}
+
+// Get roster data (for displaying participants)
+export async function getRoster(rosterId) {
+  const snap = await getDoc(rosterRef(rosterId));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  const members = Object.entries(data.members || {}).map(([uid, displayName]) => ({
+    uid, displayName,
+  }));
+  return { id: rosterId, hostUid: data.hostUid, hostName: data.hostName, members };
+}
+
+// ── Shared Mushroom Doc (collaborative) ───────────────────────
+
+// Get live shared mushroom data (type, size, stars, notes, etc.)
+export async function getSharedMushroom(mushroomId) {
+  const snap = await getDoc(doc(db, "mushrooms", mushroomId));
+  if (!snap.exists()) return null;
+  return { id: mushroomId, ...snap.data() };
+}
+
+// Update the shared doc — changes propagate to all participants
+export async function updateSharedMushroom(mushroomId, entry) {
+  const numericEndTime = entry.endTime
+    ? (entry.endTime instanceof Date ? entry.endTime.getTime() : typeof entry.endTime === 'number' ? entry.endTime : null)
+    : null;
+  await updateDoc(doc(db, "mushrooms", mushroomId), {
+    mushroomType: entry.mushroomType,
+    size:         entry.size,
+    workload:     Number(entry.workload) || null,
+    strength:     Number(entry.strength) || null,
+    endTime:      numericEndTime,
+    notes:        entry.notes || "",
+    stars:        entry.stars || "",
+    players:      Number(entry.players) || 1,
+    updatedAt:    serverTimestamp(),
+  });
+}
+
 // ── Mushroom Invitations ──────────────────────────────────────
 
 // Host invites a friend to a shared mushroom
-export async function inviteFriendToMushroom(mushroomId, mushroom, toUid, toName, hostName) {
+export async function inviteFriendToMushroom(rosterId, sharedMushroomId, mushroom, toUid, toName, hostName) {
   const uid = myUid();
 
-  await setDoc(doc(invitesRef(toUid), mushroomId), {
-    mushroomId:   mushroomId,
+  await setDoc(doc(invitesRef(toUid), rosterId), {
+    rosterId,
+    sharedMushroomId,
     mushroomType: mushroom.mushroomType,
     size:         mushroom.size,
     endTime:      mushroom.endTime,
@@ -260,14 +294,18 @@ export async function declineMushroomInvite(mushroomId) {
   await deleteDoc(doc(invitesRef(myUid()), mushroomId));
 }
 
-// ── Shared Mushrooms ──────────────────────────────────────────
-
-export async function createSharedMushroom(entry, profile) {
+// Host registers a new mushroom and invites friends to it.
+// Creates a shared doc (mutable by all) + roster (participant tracker)
+// + personal log entry + sends invites.
+// Edits update the shared doc; deletion is per-user.
+export async function registerSharedMushroom(entry, profile, invitedFriends) {
   const uid = myUid();
   const numericEndTime = entry.endTime
     ? (entry.endTime instanceof Date ? entry.endTime.getTime() : typeof entry.endTime === 'number' ? entry.endTime : null)
     : null;
-  const ref = await addDoc(collection(db, "mushrooms"), {
+
+  // 1. Create the shared mushroom doc (mutable collaborative data)
+  const sharedRef = await addDoc(collection(db, "mushrooms"), {
     createdBy:     uid,
     createdByName: profile.displayName,
     mushroomType:  entry.mushroomType,
@@ -277,142 +315,83 @@ export async function createSharedMushroom(entry, profile) {
     endTime:       numericEndTime,
     notes:         entry.notes || "",
     stars:         entry.stars || "",
+    players:       Number(entry.players) || 1,
     status:        numericEndTime && numericEndTime <= Date.now() ? "completed" : "active",
     createdAt:     serverTimestamp(),
   });
+  const sharedMushroomId = sharedRef.id;
 
-  await setDoc(doc(participantsRef(ref.id), uid), {
-    displayName: profile.displayName,
-    joinedAt:    serverTimestamp(),
-    strength:    Number(entry.strength) || null,
-    stars:       entry.stars || "",
-    confirmed:   true,
+  // 2. Create the roster (participant tracker)
+  const rosterId = await createRoster(profile.displayName);
+
+  // 3. Create a personal log entry for the host
+  const logRef = await addDoc(logsRef(uid), {
+    id:           entry.id,
+    mushroomType: entry.mushroomType,
+    size:         entry.size,
+    stars:        entry.stars || "",
+    players:      entry.players || 1,
+    workload:     String(entry.workload || ""),
+    strength:     String(entry.strength || ""),
+    notes:        entry.notes || "",
+    startTime:    entry.startTime || "",
+    endTime:      numericEndTime,
+    registeredAt: entry.registeredAt || Date.now(),
+    date:         entry.date || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+    sharedMushroomId,
+    rosterId,
+    isShared:     true,
+    createdBy:    uid,
+    createdAt:    serverTimestamp(),
   });
 
-  await setDoc(mushRefRef(uid, ref.id), {
-    role: "host", joinedAt: serverTimestamp(), mushroomId: ref.id,
-  });
+  // 4. Send invites to each friend
+  const mushroomInfo = { mushroomType: entry.mushroomType, size: entry.size, endTime: numericEndTime };
+  await Promise.all(invitedFriends.map(friend =>
+    inviteFriendToMushroom(rosterId, sharedMushroomId, mushroomInfo, friend.uid, friend.displayName, profile.displayName)
+  ));
 
-  return ref.id;
+  return { logFirebaseId: logRef.id, sharedMushroomId, rosterId };
 }
 
-// Join by mushroom ID — also writes a local log entry
-export async function joinSharedMushroom(mushroomId, profile, strength) {
+// Accept a mushroom invite — join roster, create personal log entry referencing shared doc
+export async function acceptMushroomInvite(invite, profile) {
   const uid = myUid();
+  const { rosterId, sharedMushroomId } = invite;
 
-  const mushroomSnap = await getDoc(mushroomRef(mushroomId));
-  if (!mushroomSnap.exists()) throw new Error("Mushroom not found. Check the ID and try again.");
-  const mushroom = mushroomSnap.data();
+  // 1. Join the roster
+  await joinRoster(rosterId, profile.displayName);
 
-  // Check not already joined
-  const existingParticipant = await getDoc(doc(participantsRef(mushroomId), uid));
-  if (existingParticipant.exists()) throw new Error("You've already joined this mushroom.");
+  // 2. Delete invite
+  try { await deleteDoc(doc(invitesRef(uid), rosterId)); } catch { /* ignore */ }
 
-  await setDoc(doc(participantsRef(mushroomId), uid), {
-    displayName: profile.displayName,
-    joinedAt:    serverTimestamp(),
-    strength:    strength || null,
-    stars:       "",
-    confirmed:   false,
-  });
-
-  await setDoc(mushRefRef(uid, mushroomId), {
-    role: "participant", joinedAt: serverTimestamp(), mushroomId,
-  });
-
-  // Delete invite if it existed
-  try {
-    await deleteDoc(doc(invitesRef(uid), mushroomId));
-  } catch { /* ignore */ }
-
-  // Write personal log entry so it appears in History
-  const rawEndTime = mushroom.endTime;
+  // 3. Write personal log entry (snapshot — user owns this copy)
+  const rawEndTime = invite.endTime;
   const numericEndTime = rawEndTime
     ? (typeof rawEndTime.toDate === 'function' ? rawEndTime.toDate().getTime() : typeof rawEndTime === 'number' ? rawEndTime : null)
     : null;
 
   const logEntry = {
-    id:               Date.now(),
-    mushroomType:     mushroom.mushroomType,
-    size:             mushroom.size,
-    workload:         mushroom.workload || null,
-    strength:         strength || mushroom.strength || null,
-    stars:            mushroom.stars || "",
-    players:          1,
-    notes:            mushroom.notes || "",
-    endTime:          numericEndTime,
-    registeredAt:     Date.now(),
-    date:             new Date().toLocaleDateString("en-US", {
+    id:           Date.now(),
+    mushroomType: invite.mushroomType,
+    size:         invite.size,
+    workload:     null,
+    strength:     null,
+    stars:        "",
+    players:      1,
+    notes:        "",
+    endTime:      numericEndTime,
+    registeredAt: Date.now(),
+    date:         new Date().toLocaleDateString("en-US", {
       month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     }),
-    sharedMushroomId: mushroomId,
-    sharedBy:         mushroom.createdByName || "a friend",
-    createdBy:        mushroom.createdBy,
-    isShared:         true,
-    createdAt:        serverTimestamp(),
+    sharedMushroomId,
+    rosterId,
+    sharedBy:     invite.fromName,
+    isShared:     true,
+    createdAt:    serverTimestamp(),
   };
 
   const logDocRef = await addDoc(logsRef(uid), logEntry);
   return { ...logEntry, _firebaseId: logDocRef.id };
-}
-
-export async function getSharedMushroom(mushroomId) {
-  const [mushroomSnap, participantsSnap] = await Promise.all([
-    getDoc(mushroomRef(mushroomId)),
-    getDocs(participantsRef(mushroomId)),
-  ]);
-  if (!mushroomSnap.exists()) return null;
-  return {
-    id: mushroomId,
-    ...mushroomSnap.data(),
-    participants: participantsSnap.docs.map(d => ({ uid: d.id, ...d.data() })),
-  };
-}
-
-export async function loadMySharedMushrooms() {
-  const uid = myUid();
-  const refsSnap = await getDocs(collection(db, "users", uid, "mushroom_refs"));
-  if (refsSnap.empty) return [];
-  const mushrooms = await Promise.all(refsSnap.docs.map(d => getSharedMushroom(d.id)));
-  return mushrooms.filter(Boolean);
-}
-
-export async function updateSharedMushroom(mushroomId, entry) {
-  const numericEndTime = entry.endTime
-    ? (entry.endTime instanceof Date ? entry.endTime.getTime() : typeof entry.endTime === 'number' ? entry.endTime : null)
-    : null;
-  await updateDoc(mushroomRef(mushroomId), {
-    mushroomType: entry.mushroomType,
-    size:         entry.size,
-    workload:     Number(entry.workload) || null,
-    strength:     Number(entry.strength) || null,
-    endTime:      numericEndTime,
-    notes:        entry.notes || "",
-    stars:        entry.stars || "",
-    status:       numericEndTime && numericEndTime <= Date.now() ? "completed" : "active",
-    updatedAt:    serverTimestamp(),
-  });
-}
-
-export function listenToSharedMushroom(mushroomId, callback) {
-  // Fetch participants once, then only listen to the mushroom doc
-  return getDocs(participantsRef(mushroomId)).then((participantsSnap) => {
-    const participants = participantsSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-    return onSnapshot(mushroomRef(mushroomId), (snap) => {
-      if (!snap.exists()) return;
-      callback({
-        id: mushroomId,
-        ...snap.data(),
-        participants,
-      });
-    });
-  });
-}
-
-export async function leaveSharedMushroom(mushroomId) {
-  const uid = myUid();
-  await Promise.all([
-    deleteDoc(doc(participantsRef(mushroomId), uid)),
-    deleteDoc(mushRefRef(uid, mushroomId)),
-  ]);
 }

@@ -7,9 +7,8 @@ import {
   cancelFriendRequest,
   subscribeSentRequests,
   subscribeFriends,
-  loadMySharedMushrooms,
   declineMushroomInvite,
-  joinSharedMushroom,
+  acceptMushroomInvite,
 } from "../api/friends";
 import { MUSHROOM_TYPES, SIZE_EMOJI, formatDuration } from "../App";
 
@@ -27,7 +26,6 @@ export default function FriendsView({ th, user, myLog, onLogAdded, onNotifChange
   const [profile, setProfile]         = useState(null);
   const [friends, setFriends]         = useState([]);
   const [sentRequests, setSentReqs]   = useState([]);
-  const [shared, setShared]           = useState([]);
   const [loading, setLoading]         = useState(true);
   const [codeCopied, setCodeCopied]   = useState(false);
 
@@ -51,12 +49,6 @@ export default function FriendsView({ th, user, myLog, onLogAdded, onNotifChange
       setProfile(prof);
       unsubs.push(subscribeSentRequests(user.uid, setSentReqs));
       unsubs.push(subscribeFriends(user.uid, setFriends));
-      return loadMySharedMushrooms();
-    }).then(shared => {
-      setShared(shared.sort((a,b) => {
-        const toNum = (v) => v ? (typeof v.toDate === 'function' ? v.toDate().getTime() : typeof v === 'number' ? v : 0) : 0;
-        return (toNum(b.createdAt) || b.createdAt?.seconds || 0) - (toNum(a.createdAt) || a.createdAt?.seconds || 0);
-      }));
       setLoading(false);
     }).catch(e => { console.error(e); setLoading(false); });
 
@@ -101,7 +93,7 @@ export default function FriendsView({ th, user, myLog, onLogAdded, onNotifChange
   // ── Accept mushroom invite ──
   async function handleAcceptInvite(invite) {
     try {
-      const logEntry = await joinSharedMushroom(invite.mushroomId, profile, null);
+      const logEntry = await acceptMushroomInvite(invite, profile);
       if (onLogAdded) onLogAdded(logEntry);
     } catch (e) {
       alert(e.message || "Failed to join. Try again.");
@@ -111,7 +103,7 @@ export default function FriendsView({ th, user, myLog, onLogAdded, onNotifChange
   // ── Decline mushroom invite ──
   async function handleDeclineInvite(invite) {
     try {
-      await declineMushroomInvite(invite.mushroomId);
+      await declineMushroomInvite(invite.rosterId);
     } catch (e) {
       console.error("decline invite failed", e);
     }
@@ -498,7 +490,7 @@ function NotificationsTab({ th, friendRequests, mushroomInvites,
             const invEndTime = inv.endTime ? (typeof inv.endTime.toDate === 'function' ? inv.endTime.toDate().getTime() : typeof inv.endTime === 'number' ? inv.endTime : null) : null;
             const ms = invEndTime ? invEndTime - Date.now() : null;
             return (
-              <div key={inv.mushroomId} style={{ background: th.surface,
+              <div key={inv.rosterId} style={{ background: th.surface,
                 border: `1px solid ${t ? `${t.color}55` : th.border}`,
                 borderRadius: 14, padding: "14px", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>

@@ -22,7 +22,10 @@ function logDocRef(firebaseId) {
 export async function loadLogs() {
   const q = query(logsRef(), orderBy("registeredAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ ...d.data(), _firebaseId: d.id }));
+  return snap.docs.map(d => {
+    const data = d.data();
+    return { ...data, _firebaseId: d.id, id: data.id ?? d.id };
+  });
 }
 
 export async function addLog(entry) {
