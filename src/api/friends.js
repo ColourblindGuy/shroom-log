@@ -80,8 +80,27 @@ export async function initProfile(user) {
     await setDoc(doc(db, "friend_codes", code), { uid: user.uid, displayName: data.displayName });
     return data;
   } else {
-    await updateDoc(ref, { lastSeen: serverTimestamp() });
-    return snap.data();
+    const existingData = snap.data();
+    let code = existingData.friendCode;
+
+    if (!code) {
+      code = generateFriendCode();
+      await updateDoc(ref, { friendCode: code, lastSeen: serverTimestamp() });
+    } else {
+      await updateDoc(ref, { lastSeen: serverTimestamp() });
+    }
+
+    // Ensure the friend_codes/{code} lookup entry exists
+    const codeRef = doc(db, "friend_codes", code);
+    const codeSnap = await getDoc(codeRef);
+    if (!codeSnap.exists()) {
+      await setDoc(codeRef, {
+        uid: user.uid,
+        displayName: existingData.displayName || user.displayName || user.email?.split("@")[0] || "Trainer",
+      });
+    }
+
+    return { ...existingData, friendCode: code };
   }
 }
 

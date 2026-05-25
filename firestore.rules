@@ -17,5 +17,73 @@ service cloud.firestore {
       allow read:  if request.auth != null;
       allow write: if false;
     }
+
+    // ── Friend System ─────────────────────────────────────
+
+    // Profile: each user reads/writes their own
+    match /users/{userId}/profile/{doc} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Friend codes: anyone authenticated can look one up;
+    // only the owner can create/delete their own code entry.
+    // Use request.resource for create (resource doesn't exist yet),
+    // and resource for delete/update (document already exists).
+    match /friend_codes/{code} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow update: if request.auth != null && request.auth.uid == resource.data.uid;
+    }
+
+    // Friend list: owner reads; owner OR the friend can create/delete
+    // (bidirectional remove requires the other user to delete from this list too)
+    match /users/{userId}/friends/{friendUid} {
+      allow read:   if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && (request.auth.uid == userId || request.auth.uid == friendUid);
+      allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == friendUid);
+    }
+
+    // Incoming friend requests: receiver reads;
+    // sender (whose uid == requestId) can create or cancel their own request;
+    // receiver can delete (accept/decline).
+    match /users/{userId}/friend_requests/{requestId} {
+      allow read:   if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == requestId;
+      allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == requestId);
+    }
+
+    // Sent friend requests: sender reads/writes;
+    // recipient (whose uid == requestId) can delete on accept/decline.
+    match /users/{userId}/sent_requests/{requestId} {
+      allow read:   if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == requestId);
+    }
+
+    // Mushroom invitations
+    match /users/{userId}/mushroom_invites/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Mushroom references (tracks which mushrooms a user has joined)
+    match /users/{userId}/mushroom_refs/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Shared mushrooms
+    match /mushrooms/{mushroomId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.createdBy;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // Shared mushroom participants
+    match /mushrooms/{mushroomId}/participants/{uid} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }

@@ -27,6 +27,7 @@ export default function FriendsView({ th, user, myLog, onLogAdded, onNotifChange
   const [profile, setProfile]         = useState(null);
   const [friends, setFriends]         = useState([]);
   const [sentRequests, setSentReqs]   = useState([]);
+  const [shared, setShared]           = useState([]);
   const [loading, setLoading]         = useState(true);
   const [codeCopied, setCodeCopied]   = useState(false);
 
@@ -133,7 +134,7 @@ export default function FriendsView({ th, user, myLog, onLogAdded, onNotifChange
 
   const tabs = [
     { key: "friends",       label: "👥 Friends",      badge: friendRequests.length },
-    { key: "notifications", label: "🔔 Notifications", badge: notifCount },
+    { key: "notifications", label: "🔔 Requests Pending", badge: notifCount },
   ];
 
   return (

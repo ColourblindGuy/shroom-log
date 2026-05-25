@@ -513,6 +513,7 @@ export default function App() {
     if (!form.mushroomType || !form.size || !form.stars) return;
     if (form.pastMode && !form.endedAt) return;
     if (!form.pastMode && form.timeMode === "direct" && !form.directEndTime) return;
+    if (!form.pastMode && form.timeMode === "calculate" && !form.strength) return;
     const existing = editId ? log.find(e => e.id === editId) : null;
 
     // Determine endTime: pastMode uses endedAt, otherwise calculated from workload/strength
@@ -1074,14 +1075,18 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
       <button onClick={submit}
         disabled={!form.mushroomType || !form.size || !form.stars
           || (form.pastMode && !form.endedAt)
-          || (!form.pastMode && form.timeMode === "direct" && !form.directEndTime)}
+          || (!form.pastMode && form.timeMode === "direct" && !form.directEndTime)
+          || (!form.pastMode && form.timeMode === "calculate" && !form.strength)}
         style={{
         width: "100%", padding: 15, marginTop: 4,
         background: th.accentGrad, border: "none", borderRadius: 18,
         color: "#fff", fontWeight: 900, fontSize: 16, cursor: "pointer",
         fontFamily: "inherit", boxShadow: `0 4px 24px ${th.accentGlow}`,
         transition: "opacity 0.2s", letterSpacing: 0.3,
-        opacity: (!form.mushroomType || !form.size || !form.stars) ? 0.4 : 1,
+        opacity: (!form.mushroomType || !form.size || !form.stars
+          || (form.pastMode && !form.endedAt)
+          || (!form.pastMode && form.timeMode === "direct" && !form.directEndTime)
+          || (!form.pastMode && form.timeMode === "calculate" && !form.strength)) ? 0.4 : 1,
       }}>
         {saved ? "✅ Saved!" : editId ? "💾 Save Changes" : form.pastMode ? "📦 Save Past Mushroom" : "Register Mushroom 🍄"}
       </button>

@@ -1,6 +1,7 @@
 // vite.config.js
 // Run: npm install vite-plugin-pwa
 // Then uncomment the PWA section below.
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 // import { VitePWA } from "vite-plugin-pwa"; // uncomment after: npm install vite-plugin-pwa
@@ -32,4 +33,10 @@ export default defineConfig({
     //   },
     // }),
   ],
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./src/tests/setup.js"],
+    css: false,
+  },
 });
