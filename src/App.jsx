@@ -486,6 +486,12 @@ export default function App() {
     if (p === "granted") setNotif(true);
   }
 
+  function revokeNotif() {
+    Object.values(scheduledRefs.current).forEach(clearTimeout);
+    scheduledRefs.current = {};
+    setNotif(false);
+  }
+
   // Derived form state
   const selectedType = MUSHROOM_TYPES.find(t => t.id === form.mushroomType);
   const workloadNum  = parseFloat(form.workload);
@@ -521,6 +527,8 @@ export default function App() {
       if (editId && existing?._firebaseId) {
         await editLog(existing._firebaseId, entry);
         setLog(prev => prev.map(e => e.id === editId ? { ...entry, _firebaseId: existing._firebaseId } : e));
+        if (scheduledRefs.current[editId]) { clearTimeout(scheduledRefs.current[editId]); delete scheduledRefs.current[editId]; }
+        if (!form.pastMode && resolvedEndTime) scheduleNotif({ ...entry, _firebaseId: existing._firebaseId });
       } else {
         const fbId = await addLog(entry);
         setLog(prev => [{ ...entry, _firebaseId: fbId }, ...prev]);
@@ -619,10 +627,12 @@ export default function App() {
     if (view === "register") return (
       <RegisterView th={th} form={form} setForm={setForm} editId={editId} cancelEdit={cancelEdit}
         selectedType={selectedType} endTime={endTime} durationMs={durationMs}
-        startMs={startMs} submit={submit} saved={saved} notif={notif} />
+        startMs={startMs} submit={submit} saved={saved} notif={notif}
+        onRequestNotif={requestNotif} />
     );
     if (view === "history")   return <HistoryView {...shared} />;
-    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} />;
+    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme}
+      user={user} notif={notif} onNotifGranted={() => setNotif(true)} onNotifRevoke={revokeNotif} />;
     return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
 
@@ -678,6 +688,18 @@ export default function App() {
             ))}
           </nav>
           <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+            {!notif
+              ? <button onClick={requestNotif} style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
+                  borderRadius: 10, color: th.textMid, padding: "9px 14px", cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 13, fontWeight: 700, width: "100%" }}>
+                  🔔 Enable notifications
+                </button>
+              : <button onClick={revokeNotif} style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
+                  borderRadius: 10, color: th.textMid, padding: "9px 14px", cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 13, fontWeight: 700, width: "100%" }}>
+                  🔕 Disable notifications
+                </button>
+            }
             <div style={{ fontSize: 11, color: th.textFaint, textAlign: "center" }}>
               {user.displayName || user.email}
             </div>
@@ -771,7 +793,7 @@ function makeInp(th) {
   };
 }
 
-function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, endTime, durationMs, startMs, submit, saved, notif }) {
+function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, endTime, durationMs, startMs, submit, saved, notif, onRequestNotif }) {
   // useCallback so `set` is stable — prevents the entire form re-rendering
   // every child button just because an unrelated field changed
   const set = useCallback(
@@ -997,7 +1019,10 @@ function RegisterView({ th, form, setForm, editId, cancelEdit, selectedType, end
             </div>
             {notif
               ? <div style={{ fontSize: 11, color: th.positive, marginTop: 8 }}>🔔 Notification set 5 min before end</div>
-              : <div style={{ fontSize: 11, color: th.textFaint, marginTop: 8 }}>🔕 Enable notifications for a 5-min reminder</div>
+              : <button onClick={onRequestNotif} style={{ fontSize: 11, marginTop: 8,
+                  background: "none", border: `1px dashed ${th.border}`, borderRadius: 8,
+                  padding: "6px 12px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700,
+                  width: "100%", color: th.accent }}>🔕 Enable notifications for a 5-min reminder</button>
             }
           </div>
         )}
@@ -1375,7 +1400,7 @@ function AnalyticsView({ th, analytics, log }) {
 // ─────────────────────────────────────────────────────────────
 // SETTINGS VIEW
 // ─────────────────────────────────────────────────────────────
-function SettingsView({ th, themeId, applyTheme, user }) {
+function SettingsView({ th, themeId, applyTheme, user, notif, onNotifGranted, onNotifRevoke }) {
   return (
     <div className="fade-in">
 
@@ -1412,7 +1437,7 @@ function SettingsView({ th, themeId, applyTheme, user }) {
       </div>
 
       {/* Notifications */}
-      <NotifSetting th={th} />
+      <NotifSetting th={th} notif={notif} onGranted={onNotifGranted} onRevoke={onNotifRevoke} />
 
       {/* Theme picker */}
       <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1474,21 +1499,14 @@ function SettingsView({ th, themeId, applyTheme, user }) {
   );
 }
 
-function NotifSetting({ th }) {
-  const [status, setStatus] = useState(
-    "Notification" in window ? Notification.permission : "unsupported"
-  );
+function NotifSetting({ th, notif, onGranted, onRevoke }) {
+  const browserStatus = "Notification" in window ? Notification.permission : "unsupported";
 
   async function request() {
     if (!("Notification" in window)) return;
     const p = await Notification.requestPermission();
-    setStatus(p);
+    if (p === "granted") onGranted?.();
   }
-
-  const label = status === "granted"   ? "✅ Notifications enabled"
-              : status === "denied"    ? "🚫 Blocked by browser — enable in browser settings"
-              : status === "unsupported" ? "⚠️ Not supported in this browser"
-              : "🔔 Enable Notifications";
 
   return (
     <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1500,19 +1518,33 @@ function NotifSetting({ th }) {
       <div style={{ fontSize: 13, color: th.textFaint, marginBottom: 12, lineHeight: 1.6 }}>
         Get a reminder 5 minutes before a mushroom ends.
       </div>
-      <button
-        onClick={request}
-        disabled={status === "granted" || status === "denied" || status === "unsupported"}
-        style={{
+      {notif ? (
+        <button onClick={onRevoke} style={{
           width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
-          fontWeight: 800, fontSize: 14, cursor: status === "default" ? "pointer" : "default",
-          border: `1.5px solid ${status === "granted" ? th.positive : th.border}`,
-          background: status === "granted" ? `${th.positive}22` : th.surfaceAlt,
-          color: status === "granted" ? th.positive : th.textMid,
-          transition: "all 0.2s",
+          fontWeight: 800, fontSize: 14, cursor: "pointer",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          color: th.textMid, transition: "all 0.2s",
         }}>
-        {label}
-      </button>
+          🔕 Disable Notifications
+        </button>
+      ) : browserStatus === "unsupported" ? (
+        <div style={{ fontSize: 13, color: th.textFaint, fontWeight: 700, textAlign: "center" }}>
+          ⚠️ Not supported in this browser
+        </div>
+      ) : browserStatus === "denied" ? (
+        <div style={{ fontSize: 13, color: th.warning, fontWeight: 700, textAlign: "center" }}>
+          🚫 Blocked by browser — enable in browser settings
+        </div>
+      ) : (
+        <button onClick={request} style={{
+          width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
+          fontWeight: 800, fontSize: 14, cursor: "pointer",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          color: th.textMid, transition: "all 0.2s",
+        }}>
+          🔔 Enable Notifications
+        </button>
+      )}
     </div>
   );
 }
