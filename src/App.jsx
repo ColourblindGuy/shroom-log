@@ -452,7 +452,10 @@ export default function App() {
   const [saved, setSaved]     = useState(false);
   const [search, setSearch]   = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [notif, setNotif]     = useState(false);
+  const [notif, setNotif]     = useState(() => {
+    if (typeof Notification === "undefined") return false;
+    return Notification.permission === "granted" && localStorage.getItem("notif_enabled") !== "false";
+  });
   const [announcements, setAnn] = useState([]);
   const [dismissed, setDismissed] = useState(() => {
     try { return JSON.parse(localStorage.getItem("dismissed_ann") || "[]"); } catch { return []; }
@@ -465,6 +468,7 @@ export default function App() {
   const notifRef = useRef(notif);
 
   useEffect(() => { notifRef.current = notif; }, [notif]);
+  useEffect(() => { localStorage.setItem("notif_enabled", notif); }, [notif]);
 
   useEffect(() => {
     if (!user) { setLog([]); setLoading(false); return; }
@@ -472,7 +476,7 @@ export default function App() {
     Promise.all([loadLogs(), loadAnnouncements()]).then(([logs, anns]) => {
       setLog(logs); setAnn(anns); setLoading(false);
     }).catch(() => setLoading(false));
-    if ("Notification" in window && Notification.permission === "granted") setNotif(true);
+    if ("Notification" in window && Notification.permission === "granted" && localStorage.getItem("notif_enabled") !== "false") setNotif(true);
   }, [user]);
 
   useEffect(() => {
@@ -488,15 +492,21 @@ export default function App() {
     function onVisible() {
       if (document.visibilityState !== "visible" || !notifRef.current) return;
       log.forEach(e => {
+        if (scheduledRefs.current[e.id]) {
+          clearTimeout(scheduledRefs.current[e.id]);
+          delete scheduledRefs.current[e.id];
+        }
         const end = normalizeEndTime(e.endTime);
         if (!end) return;
         const msLeft = end - Date.now();
-        if (msLeft <= 5 * 60 * 1000 && msLeft > 0 && !scheduledRefs.current[e.id]) {
-          const t = MUSHROOM_TYPES.find(x => x.id === e.mushroomType);
-          new Notification("🍄 Mushroom ending soon!", {
-            body: `Your ${e.size} ${t?.label} mushroom ends in 5 minutes!`,
-          });
-        } else if (msLeft > 5 * 60 * 1000 && !scheduledRefs.current[e.id]) {
+        if (msLeft <= 5 * 60 * 1000 && msLeft > 0) {
+          try {
+            const t = MUSHROOM_TYPES.find(x => x.id === e.mushroomType);
+            new Notification("🍄 Mushroom ending soon!", {
+              body: `Your ${e.size} ${t?.label} mushroom ends in 5 minutes!`,
+            });
+          } catch {}
+        } else if (msLeft > 5 * 60 * 1000) {
           scheduleNotif(e);
         }
       });
@@ -543,10 +553,12 @@ export default function App() {
     if (ms > 0) {
       const timer = setTimeout(() => {
         if (!notifRef.current) return;
-        const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-        new Notification("🍄 Mushroom ending soon!", {
-          body: `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
-        });
+        try {
+          const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
+          new Notification("🍄 Mushroom ending soon!", {
+            body: `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
+          });
+        } catch {}
       }, ms);
       scheduledRefs.current[entry.id] = timer;
     }
