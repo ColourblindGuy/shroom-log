@@ -477,11 +477,32 @@ export default function App() {
 
   useEffect(() => {
     if (notif) {
-      log.forEach(e => { if (e.endTime && !scheduledRefs.current[e.id]) scheduleNotif(e); });
+      log.forEach(e => { if (normalizeEndTime(e.endTime) && !scheduledRefs.current[e.id]) scheduleNotif(e); });
     } else {
       Object.values(scheduledRefs.current).forEach(t => clearTimeout(t));
       scheduledRefs.current = {};
     }
+  }, [log, notif]);
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible" || !notifRef.current) return;
+      log.forEach(e => {
+        const end = normalizeEndTime(e.endTime);
+        if (!end) return;
+        const msLeft = end - Date.now();
+        if (msLeft <= 5 * 60 * 1000 && msLeft > 0 && !scheduledRefs.current[e.id]) {
+          const t = MUSHROOM_TYPES.find(x => x.id === e.mushroomType);
+          new Notification("🍄 Mushroom ending soon!", {
+            body: `Your ${e.size} ${t?.label} mushroom ends in 5 minutes!`,
+          });
+        } else if (msLeft > 5 * 60 * 1000 && !scheduledRefs.current[e.id]) {
+          scheduleNotif(e);
+        }
+      });
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [log, notif]);
 
   useEffect(() => {
@@ -506,9 +527,19 @@ export default function App() {
     return unsub;
   }, [user]);
 
+  function normalizeEndTime(et) {
+    if (!et) return null;
+    if (typeof et === "number") return et;
+    if (typeof et.toDate === "function") return et.toDate().getTime();
+    if (et instanceof Date) return et.getTime();
+    return null;
+  }
+
   function scheduleNotif(entry) {
-    if (!notif || !entry.endTime) return;
-    const ms = entry.endTime - Date.now() - 5 * 60 * 1000;
+    if (!notif) return;
+    const end = normalizeEndTime(entry.endTime);
+    if (!end) return;
+    const ms = end - Date.now() - 5 * 60 * 1000;
     if (ms > 0) {
       const timer = setTimeout(() => {
         if (!notifRef.current) return;
