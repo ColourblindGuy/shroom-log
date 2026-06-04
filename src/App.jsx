@@ -750,7 +750,7 @@ export default function App() {
     if (view === "friends")   return <FriendsView th={th} user={user} friendRequests={friendRequests}
       mushroomInvites={mushroomInvites}
       onLogAdded={logEntry => setLog(prev => [logEntry, ...prev])} />;
-    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} onNotifGranted={() => setNotif(true)} onNotifRevoke={revokeNotif} />;
+    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} notif={notif} onNotifGranted={() => setNotif(true)} onNotifRevoke={revokeNotif} />;
     return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
 
@@ -867,18 +867,6 @@ export default function App() {
             </div>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            {!notif
-              ? <button onClick={requestNotif} title="Enable notifications"
-                  style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
-                    borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer", color: th.accent }}>
-                  🔔
-                </button>
-              : <button onClick={revokeNotif} title="Disable notifications"
-                  style={{ background: th.surfaceAlt, border: `1px solid ${th.border}`,
-                    borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer", color: th.textFaint }}>
-                  🔕
-                </button>
-            }
             <NotificationBell th={th} friendRequests={friendRequests} mushroomInvites={mushroomInvites}
               onAcceptFriend={handleAcceptFriend} onDeclineFriend={handleDeclineFriend}
               onAcceptMushroom={handleAcceptMushroom} onDeclineMushroom={handleDeclineMushroom} />
@@ -1722,7 +1710,7 @@ function AnalyticsView({ th, analytics, log }) {
 // ─────────────────────────────────────────────────────────────
 // SETTINGS VIEW
 // ─────────────────────────────────────────────────────────────
-function SettingsView({ th, themeId, applyTheme, user, onNotifGranted, onNotifRevoke }) {
+function SettingsView({ th, themeId, applyTheme, user, notif, onNotifGranted, onNotifRevoke }) {
   return (
     <div className="fade-in">
 
@@ -1759,7 +1747,7 @@ function SettingsView({ th, themeId, applyTheme, user, onNotifGranted, onNotifRe
       </div>
 
       {/* Notifications */}
-      <NotifSetting th={th} onGranted={onNotifGranted} onRevoke={onNotifRevoke} />
+      <NotifSetting th={th} notif={notif} onGranted={onNotifGranted} onRevoke={onNotifRevoke} />
 
       {/* Theme picker */}
       <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1821,22 +1809,14 @@ function SettingsView({ th, themeId, applyTheme, user, onNotifGranted, onNotifRe
   );
 }
 
-function NotifSetting({ th, onGranted, onRevoke }) {
-  const [status, setStatus] = useState(
-    "Notification" in window ? Notification.permission : "unsupported"
-  );
+function NotifSetting({ th, notif, onGranted, onRevoke }) {
+  const browserStatus = "Notification" in window ? Notification.permission : "unsupported";
 
   async function request() {
     if (!("Notification" in window)) return;
     const p = await Notification.requestPermission();
-    setStatus(p);
     if (p === "granted") onGranted?.();
   }
-
-  const label = status === "granted"   ? "✅ Notifications enabled"
-              : status === "denied"    ? "🚫 Blocked by browser — enable in browser settings"
-              : status === "unsupported" ? "⚠️ Not supported in this browser"
-              : "🔔 Enable Notifications";
 
   return (
     <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1848,7 +1828,7 @@ function NotifSetting({ th, onGranted, onRevoke }) {
       <div style={{ fontSize: 13, color: th.textFaint, marginBottom: 12, lineHeight: 1.6 }}>
         Get a reminder 5 minutes before a mushroom ends.
       </div>
-      {status === "granted" ? (
+      {notif ? (
         <button onClick={onRevoke} style={{
           width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
           fontWeight: 800, fontSize: 14, cursor: "pointer",
@@ -1857,18 +1837,22 @@ function NotifSetting({ th, onGranted, onRevoke }) {
         }}>
           🔕 Disable Notifications
         </button>
+      ) : browserStatus === "unsupported" ? (
+        <div style={{ fontSize: 13, color: th.textFaint, fontWeight: 700, textAlign: "center" }}>
+          ⚠️ Not supported in this browser
+        </div>
+      ) : browserStatus === "denied" ? (
+        <div style={{ fontSize: 13, color: th.warning, fontWeight: 700, textAlign: "center" }}>
+          🚫 Blocked by browser — enable in browser settings
+        </div>
       ) : (
-        <button onClick={request}
-          disabled={status === "denied" || status === "unsupported"}
-          style={{
-            width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
-            fontWeight: 800, fontSize: 14, cursor: status === "default" ? "pointer" : "default",
-            border: `1.5px solid ${th.border}`,
-            background: th.surfaceAlt,
-            color: th.textMid,
-            transition: "all 0.2s",
-          }}>
-          {label}
+        <button onClick={request} style={{
+          width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
+          fontWeight: 800, fontSize: 14, cursor: "pointer",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          color: th.textMid, transition: "all 0.2s",
+        }}>
+          🔔 Enable Notifications
         </button>
       )}
     </div>
