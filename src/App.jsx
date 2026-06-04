@@ -462,6 +462,9 @@ export default function App() {
   const [mushroomInvites, setMushroomInvites] = useState([]);
   const [invitedFriends, setInvitedFriends] = useState([]);
   const scheduledRefs = useRef({});
+  const notifRef = useRef(notif);
+
+  useEffect(() => { notifRef.current = notif; }, [notif]);
 
   useEffect(() => {
     if (!user) { setLog([]); setLoading(false); return; }
@@ -473,7 +476,12 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    log.forEach(e => { if (e.endTime && !scheduledRefs.current[e.id]) scheduleNotif(e); });
+    if (notif) {
+      log.forEach(e => { if (e.endTime && !scheduledRefs.current[e.id]) scheduleNotif(e); });
+    } else {
+      Object.values(scheduledRefs.current).forEach(t => clearTimeout(t));
+      scheduledRefs.current = {};
+    }
   }, [log, notif]);
 
   useEffect(() => {
@@ -503,6 +511,7 @@ export default function App() {
     const ms = entry.endTime - Date.now() - 5 * 60 * 1000;
     if (ms > 0) {
       const timer = setTimeout(() => {
+        if (!notifRef.current) return;
         const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
         new Notification("🍄 Mushroom ending soon!", {
           body: `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
@@ -739,7 +748,7 @@ export default function App() {
     if (view === "friends")   return <FriendsView th={th} user={user} friendRequests={friendRequests}
       mushroomInvites={mushroomInvites}
       onLogAdded={logEntry => setLog(prev => [logEntry, ...prev])} />;
-    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} />;
+    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} notif={notif} onToggleNotif={setNotif} />;
     return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
 
@@ -1684,7 +1693,7 @@ function AnalyticsView({ th, analytics, log }) {
 // ─────────────────────────────────────────────────────────────
 // SETTINGS VIEW
 // ─────────────────────────────────────────────────────────────
-function SettingsView({ th, themeId, applyTheme, user }) {
+function SettingsView({ th, themeId, applyTheme, user, notif, onToggleNotif }) {
   return (
     <div className="fade-in">
 
@@ -1721,7 +1730,7 @@ function SettingsView({ th, themeId, applyTheme, user }) {
       </div>
 
       {/* Notifications */}
-      <NotifSetting th={th} />
+      <NotifSetting th={th} notif={notif} onToggle={onToggleNotif} />
 
       {/* Theme picker */}
       <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1783,21 +1792,36 @@ function SettingsView({ th, themeId, applyTheme, user }) {
   );
 }
 
-function NotifSetting({ th }) {
+function NotifSetting({ th, notif, onToggle }) {
   const [status, setStatus] = useState(
     "Notification" in window ? Notification.permission : "unsupported"
   );
 
-  async function request() {
+  async function handleClick() {
     if (!("Notification" in window)) return;
-    const p = await Notification.requestPermission();
-    setStatus(p);
+    if (status === "granted") {
+      onToggle(!notif);
+    } else {
+      const p = await Notification.requestPermission();
+      setStatus(p);
+      if (p === "granted") onToggle(true);
+    }
   }
 
-  const label = status === "granted"   ? "✅ Notifications enabled"
-              : status === "denied"    ? "🚫 Blocked by browser — enable in browser settings"
-              : status === "unsupported" ? "⚠️ Not supported in this browser"
-              : "🔔 Enable Notifications";
+  let label, disabled;
+  if (status === "unsupported") {
+    label = "⚠️ Not supported in this browser";
+    disabled = true;
+  } else if (status === "denied") {
+    label = "🚫 Blocked by browser — enable in browser settings";
+    disabled = true;
+  } else if (status === "granted" && notif) {
+    label = "🔕 Disable Notifications";
+    disabled = false;
+  } else {
+    label = "🔔 Enable Notifications";
+    disabled = false;
+  }
 
   return (
     <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1810,14 +1834,14 @@ function NotifSetting({ th }) {
         Get a reminder 5 minutes before a mushroom ends.
       </div>
       <button
-        onClick={request}
-        disabled={status === "granted" || status === "denied" || status === "unsupported"}
+        onClick={handleClick}
+        disabled={disabled}
         style={{
           width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
-          fontWeight: 800, fontSize: 14, cursor: status === "default" ? "pointer" : "default",
-          border: `1.5px solid ${status === "granted" ? th.positive : th.border}`,
-          background: status === "granted" ? `${th.positive}22` : th.surfaceAlt,
-          color: status === "granted" ? th.positive : th.textMid,
+          fontWeight: 800, fontSize: 14, cursor: disabled ? "default" : "pointer",
+          border: `1.5px solid ${notif && status === "granted" ? th.positive : th.border}`,
+          background: notif && status === "granted" ? `${th.positive}22` : th.surfaceAlt,
+          color: notif && status === "granted" ? th.positive : th.textMid,
           transition: "all 0.2s",
         }}>
         {label}
