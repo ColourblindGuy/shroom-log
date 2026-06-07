@@ -1860,6 +1860,7 @@ function NotifSetting({ th, notif, onToggle }) {
     "Notification" in window ? Notification.permission : "unsupported"
   );
   const [testResult, setTestResult] = useState(null);
+  const [showDiag, setShowDiag] = useState(false);
 
   async function handleClick() {
     if (!("Notification" in window)) return;
@@ -1870,7 +1871,7 @@ function NotifSetting({ th, notif, onToggle }) {
       setStatus(p);
       if (p === "granted") {
         onToggle(true);
-        sendTestNotif();
+        setTimeout(sendTestNotif, 500);
       }
     }
   }
@@ -1930,20 +1931,46 @@ function NotifSetting({ th, notif, onToggle }) {
         {label}
       </button>
       {status === "granted" && (
-        <div style={{ marginTop: 10 }}>
-          <button
-            onClick={sendTestNotif}
-            style={{
-              width: "100%", padding: "8px", borderRadius: 10, fontFamily: "inherit",
-              fontWeight: 700, fontSize: 12, cursor: "pointer",
-              border: `1px solid ${th.border}`, background: th.surfaceAlt,
-              color: th.textMid, transition: "all 0.2s",
-            }}>
-            {testResult === "sent" ? "✅ Test sent — see notification?" : "🔔 Send test notification"}
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <button onClick={sendTestNotif} style={{
+            width: "100%", padding: "8px", borderRadius: 10, fontFamily: "inherit",
+            fontWeight: 700, fontSize: 12, cursor: "pointer",
+            border: `1px solid ${th.border}`, background: th.surfaceAlt, color: th.textMid,
+          }}>
+            {testResult === "sent" ? "✅ Test sent — did you see it?" : "🔔 Send test notification"}
+          </button>
+          <button onClick={() => setShowDiag(v => !v)} style={{
+            width: "100%", padding: "6px", borderRadius: 8, fontFamily: "inherit",
+            fontWeight: 600, fontSize: 11, cursor: "pointer",
+            border: `none`, background: "transparent", color: th.textFaint,
+          }}>
+            {showDiag ? "Hide diagnostics" : "🔍 Notifications not appearing? Tap for diagnostics"}
           </button>
           {testResult === "failed" && (
-            <div style={{ fontSize: 11, color: "#ef4444", marginTop: 6, lineHeight: 1.5 }}>
-              Notification failed to send. On iOS, check Settings → Safari → Notifications and ensure this site is allowed.
+            <div style={{ fontSize: 11, color: "#ef4444", marginTop: 2, lineHeight: 1.5 }}>
+              ❌ <code>new Notification()</code> threw an error (see console).
+              This is a browser-level issue.
+            </div>
+          )}
+          {testResult === "sent" && (
+            <div style={{ fontSize: 11, color: th.positive, marginTop: 2, lineHeight: 1.5 }}>
+              ✅ <code>new Notification()</code> succeeded with no error.
+              If you didn't see the notification, it's being blocked at the OS level.
+            </div>
+          )}
+          {showDiag && (
+            <div style={{ fontSize: 11, color: th.textFaint, lineHeight: 1.7,
+              background: th.surface, borderRadius: 8, padding: 10, marginTop: 2 }}>
+              <b>Device diagnostics:</b><br />
+              Notification API: {"✅ Available"}.<br />
+              Permission: {Notification.permission}.<br />
+              Standalone mode: {navigator.standalone ? "✅ Yes" : "❌ No"}.<br />
+              <br />
+              <b>If test says "sent" but no notification appears:</b><br />
+              On iOS: Open Settings → Safari → Notifications and make sure this site is <b>Allowed</b> (not <b>Silent</b> or <b>Off</b>). Check that notifications are enabled for Safari in Settings → Notifications → Safari.<br />
+              <br />
+              <b>If test says "failed":</b><br />
+              Connect this device to a computer, open Safari, enable Developer mode, and check the console for the error message.
             </div>
           )}
         </div>
