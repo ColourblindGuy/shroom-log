@@ -489,31 +489,39 @@ export default function App() {
     }
   }, [log, notif]);
 
+  function checkNotifications() {
+    if (!notifRef.current) return;
+    log.forEach(e => {
+      if (scheduledRefs.current[e.id]) {
+        clearTimeout(scheduledRefs.current[e.id]);
+        delete scheduledRefs.current[e.id];
+      }
+      const end = normalizeEndTime(e.endTime);
+      if (!end) return;
+      const msLeft = end - Date.now();
+      if (msLeft <= 5 * 60 * 1000 && msLeft > -30 * 60 * 1000) {
+        showMushroomNotif(e, msLeft > 0 ? "" : "(Missed)");
+      } else if (msLeft > 5 * 60 * 1000) {
+        scheduleNotif(e);
+      }
+    });
+  }
+
   useEffect(() => {
     function onVisible() {
-      if (document.visibilityState !== "visible" || !notifRef.current) return;
-      log.forEach(e => {
-        if (scheduledRefs.current[e.id]) {
-          clearTimeout(scheduledRefs.current[e.id]);
-          delete scheduledRefs.current[e.id];
-        }
-        const end = normalizeEndTime(e.endTime);
-        if (!end) return;
-        const msLeft = end - Date.now();
-        if (msLeft <= 5 * 60 * 1000 && msLeft > 0) {
-          try {
-            const t = MUSHROOM_TYPES.find(x => x.id === e.mushroomType);
-            new Notification("🍄 Mushroom ending soon!", {
-              body: `Your ${e.size} ${t?.label} mushroom ends in 5 minutes!`,
-            });
-          } catch {}
-        } else if (msLeft > 5 * 60 * 1000) {
-          scheduleNotif(e);
-        }
-      });
+      if (document.visibilityState !== "visible") return;
+      checkNotifications();
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [log, notif]);
+
+  useEffect(() => {
+    if (!notif) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") checkNotifications();
+    }, 30000);
+    return () => clearInterval(id);
   }, [log, notif]);
 
   useEffect(() => {
@@ -546,6 +554,19 @@ export default function App() {
     return null;
   }
 
+  function showMushroomNotif(entry, prefix) {
+    try {
+      const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
+      new Notification("🍄 Mushroom ending soon!", {
+        body: `${prefix} Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
+      });
+      return true;
+    } catch (err) {
+      console.error("Notification error:", err);
+      return false;
+    }
+  }
+
   function scheduleNotif(entry) {
     if (!notif) return;
     const end = normalizeEndTime(entry.endTime);
@@ -554,12 +575,7 @@ export default function App() {
     if (ms > 0) {
       const timer = setTimeout(() => {
         if (!notifRef.current) return;
-        try {
-          const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-          new Notification("🍄 Mushroom ending soon!", {
-            body: `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
-          });
-        } catch {}
+        showMushroomNotif(entry, "");
       }, ms);
       scheduledRefs.current[entry.id] = timer;
     }
@@ -1843,6 +1859,7 @@ function NotifSetting({ th, notif, onToggle }) {
   const [status, setStatus] = useState(
     "Notification" in window ? Notification.permission : "unsupported"
   );
+  const [testResult, setTestResult] = useState(null);
 
   async function handleClick() {
     if (!("Notification" in window)) return;
@@ -1851,7 +1868,24 @@ function NotifSetting({ th, notif, onToggle }) {
     } else {
       const p = await Notification.requestPermission();
       setStatus(p);
-      if (p === "granted") onToggle(true);
+      if (p === "granted") {
+        onToggle(true);
+        sendTestNotif();
+      }
+    }
+  }
+
+  function sendTestNotif() {
+    setTestResult(null);
+    try {
+      const n = new Notification("🔔 Shroom Log", {
+        body: "Notifications are working on this device!",
+      });
+      setTimeout(() => n.close(), 4000);
+      setTestResult("sent");
+    } catch (err) {
+      console.error("Test notification failed:", err);
+      setTestResult("failed");
     }
   }
 
@@ -1895,6 +1929,25 @@ function NotifSetting({ th, notif, onToggle }) {
         }}>
         {label}
       </button>
+      {status === "granted" && (
+        <div style={{ marginTop: 10 }}>
+          <button
+            onClick={sendTestNotif}
+            style={{
+              width: "100%", padding: "8px", borderRadius: 10, fontFamily: "inherit",
+              fontWeight: 700, fontSize: 12, cursor: "pointer",
+              border: `1px solid ${th.border}`, background: th.surfaceAlt,
+              color: th.textMid, transition: "all 0.2s",
+            }}>
+            {testResult === "sent" ? "✅ Test sent — see notification?" : "🔔 Send test notification"}
+          </button>
+          {testResult === "failed" && (
+            <div style={{ fontSize: 11, color: "#ef4444", marginTop: 6, lineHeight: 1.5 }}>
+              Notification failed to send. On iOS, check Settings → Safari → Notifications and ensure this site is allowed.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
