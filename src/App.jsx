@@ -557,9 +557,24 @@ export default function App() {
   function showMushroomNotif(entry, prefix) {
     try {
       const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-      new Notification("🍄 Mushroom ending soon!", {
+      const title = "🍄 Mushroom ending soon!";
+      const options = {
         body: `${prefix} Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
-      });
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+      };
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then(reg => {
+          reg.showNotification(title, options);
+        }).catch(err => {
+          console.error("SW notification fallback error:", err);
+          new Notification(title, options);
+        });
+      } else {
+        new Notification(title, options);
+      }
+
       return true;
     } catch (err) {
       console.error("Notification error:", err);
@@ -1879,10 +1894,26 @@ function NotifSetting({ th, notif, onToggle }) {
   function sendTestNotif() {
     setTestResult(null);
     try {
-      const n = new Notification("🔔 Shroom Log", {
+      const title = "🔔 Shroom Log";
+      const options = {
         body: "Notifications are working on this device!",
-      });
-      setTimeout(() => n.close(), 4000);
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+      };
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then(reg => {
+          reg.showNotification(title, options);
+          setTimeout(() => reg.getNotifications().then(notifs => {
+            notifs.forEach(n => n.close());
+          }), 4000);
+        }).catch(() => {
+          new Notification(title, options);
+        });
+      } else {
+        new Notification(title, options);
+      }
+
       setTestResult("sent");
     } catch (err) {
       console.error("Test notification failed:", err);
@@ -1948,29 +1979,26 @@ function NotifSetting({ th, notif, onToggle }) {
           </button>
           {testResult === "failed" && (
             <div style={{ fontSize: 11, color: "#ef4444", marginTop: 2, lineHeight: 1.5 }}>
-              ❌ <code>new Notification()</code> threw an error (see console).
-              This is a browser-level issue.
+              ❌ Notification threw an error (see console).
             </div>
           )}
           {testResult === "sent" && (
             <div style={{ fontSize: 11, color: th.positive, marginTop: 2, lineHeight: 1.5 }}>
-              ✅ <code>new Notification()</code> succeeded with no error.
-              If you didn't see the notification, it's being blocked at the OS level.
+              ✅ Notification sent via Service Worker!
+              If you didn't see it, check OS notification settings.
             </div>
           )}
           {showDiag && (
             <div style={{ fontSize: 11, color: th.textFaint, lineHeight: 1.7,
               background: th.surface, borderRadius: 8, padding: 10, marginTop: 2 }}>
               <b>Device diagnostics:</b><br />
-              Notification API: {"✅ Available"}.<br />
+              Service Worker: {"serviceWorker" in navigator ? "✅ Available" : "❌ Unavailable"}.<br />
               Permission: {Notification.permission}.<br />
               Standalone mode: {navigator.standalone ? "✅ Yes" : "❌ No"}.<br />
               <br />
               <b>If test says "sent" but no notification appears:</b><br />
-              On iOS: Open Settings → Safari → Notifications and make sure this site is <b>Allowed</b> (not <b>Silent</b> or <b>Off</b>). Check that notifications are enabled for Safari in Settings → Notifications → Safari.<br />
-              <br />
-              <b>If test says "failed":</b><br />
-              Connect this device to a computer, open Safari, enable Developer mode, and check the console for the error message.
+              On iOS: Open Settings → Safari → Notifications and make sure this site is <b>Allowed</b> (not <b>Silent</b>).<br />
+              Then check Settings → Notifications → Safari → ensure notifications are ON.
             </div>
           )}
         </div>
