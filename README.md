@@ -423,4 +423,4 @@ Personal project — not affiliated with Nintendo or Niantic.
 Pikmin Bloom is a trademark of Nintendo / Niantic.
 All mushroom type data is based on community research from Pikipedia.
 
-Editing new readme
+Editing new readme 2
