@@ -19,6 +19,7 @@ import { subscribeFriendRequests, subscribeMushroomInvites, subscribeFriends,
   registerSharedMushroom, getSharedMushroom, updateSharedMushroom, getRoster,
   acceptFriendRequest, declineFriendRequest, declineMushroomInvite,
   acceptMushroomInvite, inviteFriendToMushroom, upgradeToShared, getProfile } from "./api/friends";
+import { getNotificationDiagnostic } from "./notifUtils";
 
 // ─────────────────────────────────────────────────────────────
 // THEMES
@@ -565,7 +566,10 @@ export default function App() {
   }
 
   async function requestNotif() {
-    if (!("Notification" in window)) return alert("Notifications not supported in this browser.");
+    if (!("Notification" in window)) {
+      const diag = getNotificationDiagnostic();
+      return alert(diag.help);
+    }
     const p = await Notification.requestPermission();
     if (p === "granted") setNotif(true);
   }
@@ -1851,9 +1855,11 @@ function NotifSetting({ th, notif, onToggle }) {
     }
   }
 
-  let label, disabled;
+  let label, disabled, helpText;
   if (status === "unsupported") {
-    label = "⚠️ Not supported in this browser";
+    const diag = getNotificationDiagnostic();
+    label = diag.label;
+    helpText = diag.help;
     disabled = true;
   } else if (status === "denied") {
     label = "🚫 Blocked by browser — enable in browser settings";
@@ -1874,7 +1880,7 @@ function NotifSetting({ th, notif, onToggle }) {
         🔔 Notifications
       </div>
       <div style={{ fontSize: 13, color: th.textFaint, marginBottom: 12, lineHeight: 1.6 }}>
-        Get a reminder 5 minutes before a mushroom ends.
+        {helpText || "Get a reminder 5 minutes before a mushroom ends."}
       </div>
       <button
         onClick={handleClick}
