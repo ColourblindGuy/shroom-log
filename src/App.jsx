@@ -504,8 +504,12 @@ export default function App() {
     if (ms > 0) {
       const timer = setTimeout(() => {
         const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-        new Notification("🍄 Mushroom ending soon!", {
-          body: `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`,
+        const title = "🍄 Mushroom ending soon!";
+        const body = `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`;
+        navigator.serviceWorker.ready.then(reg => {
+          reg.showNotification(title, { body, icon: "/icon-192.png", tag: "mushroom-reminder" });
+        }).catch(() => {
+          new Notification(title, { body });
         });
       }, ms);
       scheduledRefs.current[entry.id] = timer;
