@@ -452,7 +452,7 @@ export default function App() {
   const [saved, setSaved]     = useState(false);
   const [search, setSearch]   = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [notif, setNotif]     = useState(false);
+  const [notif, setNotif]     = useState(() => localStorage.getItem("shroom_notif") === "true");
   const [announcements, setAnn] = useState([]);
   const [dismissed, setDismissed] = useState(() => {
     try { return JSON.parse(localStorage.getItem("dismissed_ann") || "[]"); } catch { return []; }
@@ -461,7 +461,7 @@ export default function App() {
   const [friends, setFriends] = useState([]);
   const [mushroomInvites, setMushroomInvites] = useState([]);
   const [invitedFriends, setInvitedFriends] = useState([]);
-  const scheduledRefs = useRef({});
+  const notifiedRefs = useRef({});
 
   useEffect(() => {
     if (!user) { setLog([]); setLoading(false); return; }
@@ -473,7 +473,31 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    log.forEach(e => { if (e.endTime && !scheduledRefs.current[e.id]) scheduleNotif(e); });
+    localStorage.setItem("shroom_notif", notif);
+  }, [notif]);
+
+  useEffect(() => {
+    if (!notif) return;
+    const check = () => {
+      log.forEach(entry => {
+        if (!entry.endTime || notifiedRefs.current[entry.id]) return;
+        const msUntilEnd = entry.endTime - Date.now();
+        if (msUntilEnd > 0 && msUntilEnd <= 5 * 60 * 1000 + 15000) {
+          const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
+          const title = "🍄 Mushroom ending soon!";
+          const body = `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`;
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, { body, icon: "/icon-192.png", tag: "mushroom-reminder" });
+          }).catch(() => {
+            new Notification(title, { body });
+          });
+          notifiedRefs.current[entry.id] = true;
+        }
+      });
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
   }, [log, notif]);
 
   useEffect(() => {
@@ -497,30 +521,6 @@ export default function App() {
     });
     return unsub;
   }, [user]);
-
-  function scheduleNotif(entry) {
-    if (!notif || !entry.endTime) return;
-    const ms = entry.endTime - Date.now() - 5 * 60 * 1000;
-    if (ms > 0) {
-      const timer = setTimeout(() => {
-        const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-        const title = "🍄 Mushroom ending soon!";
-        const body = `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`;
-        navigator.serviceWorker.ready.then(reg => {
-          reg.showNotification(title, { body, icon: "/icon-192.png", tag: "mushroom-reminder" });
-        }).catch(() => {
-          new Notification(title, { body });
-        });
-      }, ms);
-      scheduledRefs.current[entry.id] = timer;
-    }
-  }
-
-  async function requestNotif() {
-    if (!("Notification" in window)) return alert("Notifications not supported in this browser.");
-    const p = await Notification.requestPermission();
-    if (p === "granted") setNotif(true);
-  }
 
   // Derived form state
   const selectedType = MUSHROOM_TYPES.find(t => t.id === form.mushroomType);
@@ -582,12 +582,10 @@ export default function App() {
         const logEntry = { ...entry, _firebaseId: result.logFirebaseId,
           sharedMushroomId: result.sharedMushroomId, rosterId: result.rosterId, isShared: true, createdBy: user.uid };
         setLog(prev => [logEntry, ...prev]);
-        if (!form.pastMode) scheduleNotif(logEntry);
         setInvitedFriends([]);
       } else {
         const fbId = await addLog(entry);
         setLog(prev => [{ ...entry, _firebaseId: fbId }, ...prev]);
-        if (!form.pastMode) scheduleNotif({ ...entry, _firebaseId: fbId });
       }
     } catch (e) { console.error(e); alert("Failed to save. Check your connection."); return; }
     setEditId(null); setForm(BLANK_FORM);
@@ -617,7 +615,7 @@ export default function App() {
   async function deleteEntry(id) {
     const entry = log.find(e => e.id === id);
     if (!entry || !window.confirm("Delete this entry?")) return;
-    if (scheduledRefs.current[id]) { clearTimeout(scheduledRefs.current[id]); delete scheduledRefs.current[id]; }
+    delete notifiedRefs.current[id];
     try {
       if (entry._firebaseId) await removeLog(entry._firebaseId);
       setLog(prev => prev.filter(e => e.id !== id));
@@ -743,7 +741,7 @@ export default function App() {
     if (view === "friends")   return <FriendsView th={th} user={user} friendRequests={friendRequests}
       mushroomInvites={mushroomInvites}
       onLogAdded={logEntry => setLog(prev => [logEntry, ...prev])} />;
-    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} />;
+    if (view === "settings")  return <SettingsView th={th} themeId={themeId} applyTheme={applyTheme} user={user} notif={notif} setNotif={setNotif} />;
     return <AnalyticsView th={th} analytics={analytics} log={log} />;
   }
 
@@ -1688,7 +1686,7 @@ function AnalyticsView({ th, analytics, log }) {
 // ─────────────────────────────────────────────────────────────
 // SETTINGS VIEW
 // ─────────────────────────────────────────────────────────────
-function SettingsView({ th, themeId, applyTheme, user }) {
+function SettingsView({ th, themeId, applyTheme, user, notif, setNotif }) {
   return (
     <div className="fade-in">
 
@@ -1725,7 +1723,7 @@ function SettingsView({ th, themeId, applyTheme, user }) {
       </div>
 
       {/* Notifications */}
-      <NotifSetting th={th} />
+      <NotifSetting th={th} notif={notif} setNotif={setNotif} />
 
       {/* Theme picker */}
       <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1787,7 +1785,7 @@ function SettingsView({ th, themeId, applyTheme, user }) {
   );
 }
 
-function NotifSetting({ th }) {
+function NotifSetting({ th, notif, setNotif }) {
   const [status, setStatus] = useState(
     "Notification" in window ? Notification.permission : "unsupported"
   );
@@ -1796,12 +1794,8 @@ function NotifSetting({ th }) {
     if (!("Notification" in window)) return;
     const p = await Notification.requestPermission();
     setStatus(p);
+    if (p === "granted") setNotif(true);
   }
-
-  const label = status === "granted"   ? "✅ Notifications enabled"
-              : status === "denied"    ? "🚫 Blocked by browser — enable in browser settings"
-              : status === "unsupported" ? "⚠️ Not supported in this browser"
-              : "🔔 Enable Notifications";
 
   return (
     <div style={{ background: th.surface, border: `1px solid ${th.border}`,
@@ -1813,19 +1807,55 @@ function NotifSetting({ th }) {
       <div style={{ fontSize: 13, color: th.textFaint, marginBottom: 12, lineHeight: 1.6 }}>
         Get a reminder 5 minutes before a mushroom ends.
       </div>
-      <button
-        onClick={request}
-        disabled={status === "granted" || status === "denied" || status === "unsupported"}
-        style={{
-          width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
-          fontWeight: 800, fontSize: 14, cursor: status === "default" ? "pointer" : "default",
-          border: `1.5px solid ${status === "granted" ? th.positive : th.border}`,
-          background: status === "granted" ? `${th.positive}22` : th.surfaceAlt,
-          color: status === "granted" ? th.positive : th.textMid,
-          transition: "all 0.2s",
+      {status === "granted" ? (
+        <label style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "11px 14px", borderRadius: 12, cursor: "pointer",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          fontFamily: "inherit", fontSize: 14, fontWeight: 800, color: th.text,
         }}>
-        {label}
-      </button>
+          <span>{notif ? "✅ Notifications on" : "🔕 Notifications off"}</span>
+          <div style={{
+            position: "relative", width: 44, height: 24,
+            background: notif ? th.positive : th.textFaint,
+            borderRadius: 12, transition: "background 0.2s",
+          }}>
+            <div style={{
+              position: "absolute", top: 2, left: notif ? 22 : 2,
+              width: 20, height: 20, borderRadius: "50%", background: "#fff",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+              transition: "left 0.2s",
+            }} />
+            <input type="checkbox" checked={notif} onChange={() => setNotif(v => !v)}
+              style={{ position: "absolute", opacity: 0, width: "100%", height: "100%", margin: 0, cursor: "pointer" }} />
+          </div>
+        </label>
+      ) : status === "denied" ? (
+        <div style={{
+          width: "100%", padding: "11px", borderRadius: 12, textAlign: "center",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          color: th.textMid, fontWeight: 800, fontSize: 13,
+        }}>
+          🚫 Blocked by browser — enable in browser settings
+        </div>
+      ) : status === "unsupported" ? (
+        <div style={{
+          width: "100%", padding: "11px", borderRadius: 12, textAlign: "center",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          color: th.textFaint, fontWeight: 800, fontSize: 13,
+        }}>
+          ⚠️ Not supported in this browser
+        </div>
+      ) : (
+        <button onClick={request} style={{
+          width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
+          fontWeight: 800, fontSize: 14, cursor: "pointer",
+          border: `1.5px solid ${th.border}`, background: th.surfaceAlt,
+          color: th.textMid, transition: "all 0.2s",
+        }}>
+          🔔 Enable Notifications
+        </button>
+      )}
     </div>
   );
 }
