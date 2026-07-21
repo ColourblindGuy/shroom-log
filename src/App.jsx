@@ -462,6 +462,40 @@ export default function App() {
   const [mushroomInvites, setMushroomInvites] = useState([]);
   const [invitedFriends, setInvitedFriends] = useState([]);
   const scheduledRefs = useRef({});
+  const notifIntervalRef = useRef(null);
+
+  function scheduleNotif(entry) {
+    if (!notif || !entry.endTime) return;
+    const ms = entry.endTime - Date.now() - 5 * 60 * 1000;
+    if (ms > 0 && ms <= 2147483647) {
+      const timer = setTimeout(() => {
+        showMushroomNotif(entry);
+      }, ms);
+      scheduledRefs.current[entry.id] = timer;
+    }
+  }
+
+  function showMushroomNotif(entry) {
+    const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
+    const title = "🍄 Mushroom ending soon!";
+    const body = `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`;
+    navigator.serviceWorker.ready.then(reg => {
+      reg.showNotification(title, { body, icon: "/icon-192.png", tag: "mushroom-reminder" });
+    }).catch(() => {
+      new Notification(title, { body });
+    });
+  }
+
+  function checkNotifications() {
+    log.forEach(e => {
+      if (!e.endTime || !notif) return;
+      const ms = e.endTime - Date.now() - 5 * 60 * 1000;
+      if (ms > 0 && ms <= 30 * 1000 && !scheduledRefs.current[e.id]) {
+        showMushroomNotif(e);
+        scheduledRefs.current[e.id] = "shown";
+      }
+    });
+  }
 
   useEffect(() => {
     if (!user) { setLog([]); setLoading(false); return; }
@@ -473,7 +507,10 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    log.forEach(e => { if (e.endTime && !scheduledRefs.current[e.id]) scheduleNotif(e); });
+    if (notifIntervalRef.current) clearInterval(notifIntervalRef.current);
+    if (!notif) return;
+    notifIntervalRef.current = setInterval(checkNotifications, 30 * 1000);
+    return () => clearInterval(notifIntervalRef.current);
   }, [log, notif]);
 
   useEffect(() => {
@@ -497,24 +534,6 @@ export default function App() {
     });
     return unsub;
   }, [user]);
-
-  function scheduleNotif(entry) {
-    if (!notif || !entry.endTime) return;
-    const ms = entry.endTime - Date.now() - 5 * 60 * 1000;
-    if (ms > 0) {
-      const timer = setTimeout(() => {
-        const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-        const title = "🍄 Mushroom ending soon!";
-        const body = `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`;
-        navigator.serviceWorker.ready.then(reg => {
-          reg.showNotification(title, { body, icon: "/icon-192.png", tag: "mushroom-reminder" });
-        }).catch(() => {
-          new Notification(title, { body });
-        });
-      }, ms);
-      scheduledRefs.current[entry.id] = timer;
-    }
-  }
 
   async function requestNotif() {
     if (!("Notification" in window)) return alert("Notifications not supported in this browser.");
@@ -617,7 +636,10 @@ export default function App() {
   async function deleteEntry(id) {
     const entry = log.find(e => e.id === id);
     if (!entry || !window.confirm("Delete this entry?")) return;
-    if (scheduledRefs.current[id]) { clearTimeout(scheduledRefs.current[id]); delete scheduledRefs.current[id]; }
+    if (scheduledRefs.current[id]) {
+      if (typeof scheduledRefs.current[id] === "number") clearTimeout(scheduledRefs.current[id]);
+      delete scheduledRefs.current[id];
+    }
     try {
       if (entry._firebaseId) await removeLog(entry._firebaseId);
       setLog(prev => prev.filter(e => e.id !== id));
