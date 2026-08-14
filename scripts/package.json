@@ -1,0 +1,12 @@
+{
+  "name": "shroom-log-reminder-worker",
+  "description": "Standalone script that sends mushroom-end push reminders. Run on a schedule by .github/workflows/mushroom-reminders.yml — no Firebase Blaze plan or Cloud Functions needed.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node send-reminders.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

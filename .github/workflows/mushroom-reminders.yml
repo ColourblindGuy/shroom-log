@@ -1,0 +1,31 @@
+name: Mushroom reminders
+
+# Free stand-in for Firebase Cloud Scheduler + Cloud Functions — keeps the
+# Firebase project on the Spark (free) plan, no billing account required.
+# See scripts/send-reminders.js for what actually runs.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Install dependencies
+        working-directory: scripts
+        run: npm install
+
+      - name: Send due reminders
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node send-reminders.js

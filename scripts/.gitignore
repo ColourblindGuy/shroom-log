@@ -1,0 +1,9 @@
+node_modules/
+
+# Never commit a service-account key here — the worker gets it from the
+# FIREBASE_SERVICE_ACCOUNT GitHub Actions secret, not a local file.
+*firebase-adminsdk*.json
+*service-account*.json
+shroom.json
+*.pem
+*.key

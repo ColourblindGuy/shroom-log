@@ -7,11 +7,12 @@
 //  - 5 UI themes: Midnight (default), Forest, Sakura, Ocean, Sunset
 //  - Theme persisted to localStorage
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import { loadLogs, addLog, editLog, removeLog } from "./api/logs";
 import { loadAnnouncements } from "./api/announcements";
+import { enablePushNotifications, listenForegroundMessages } from "./api/notifications";
 import { useWindowSize } from "./hooks/useWindowSize";
 import AuthScreen from "./components/AuthScreen";
 import FriendsView from "./components/FriendsView";
@@ -461,39 +462,14 @@ export default function App() {
   const [friends, setFriends] = useState([]);
   const [mushroomInvites, setMushroomInvites] = useState([]);
   const [invitedFriends, setInvitedFriends] = useState([]);
-  const scheduledRefs = useRef({});
-  const notifIntervalRef = useRef(null);
-
-  function scheduleNotif(entry) {
-    if (!notif || !entry.endTime) return;
-    const ms = entry.endTime - Date.now() - 5 * 60 * 1000;
-    if (ms > 0 && ms <= 2147483647) {
-      const timer = setTimeout(() => {
-        showMushroomNotif(entry);
-      }, ms);
-      scheduledRefs.current[entry.id] = timer;
-    }
-  }
-
-  function showMushroomNotif(entry) {
-    const t = MUSHROOM_TYPES.find(x => x.id === entry.mushroomType);
-    const title = "🍄 Mushroom ending soon!";
-    const body = `Your ${entry.size} ${t?.label} mushroom ends in 5 minutes!`;
+  // Reminders are delivered server-side via FCM (see scripts/send-reminders.js, run on a GitHub Actions cron) so
+  // they still fire days later even if this device/tab was closed the whole
+  // time — see showMushroomNotif below, used only for foreground messages.
+  function showMushroomNotif({ title, body }) {
     navigator.serviceWorker.ready.then(reg => {
       reg.showNotification(title, { body, icon: "/icon-192.png", tag: "mushroom-reminder" });
     }).catch(() => {
       new Notification(title, { body });
-    });
-  }
-
-  function checkNotifications() {
-    log.forEach(e => {
-      if (!e.endTime || !notif) return;
-      const ms = e.endTime - Date.now() - 5 * 60 * 1000;
-      if (ms > 0 && ms <= 30 * 1000 && !scheduledRefs.current[e.id]) {
-        showMushroomNotif(e);
-        scheduledRefs.current[e.id] = "shown";
-      }
     });
   }
 
@@ -503,15 +479,22 @@ export default function App() {
     Promise.all([loadLogs(), loadAnnouncements()]).then(([logs, anns]) => {
       setLog(logs); setAnn(anns); setLoading(false);
     }).catch(() => setLoading(false));
-    if ("Notification" in window && Notification.permission === "granted") setNotif(true);
+    if ("Notification" in window && Notification.permission === "granted") {
+      setNotif(true);
+      // Re-register on every load — tokens can rotate/expire, and this
+      // keeps a device's subscription alive without asking the user again.
+      enablePushNotifications().catch(e => console.error("FCM re-register failed", e));
+    }
   }, [user]);
 
   useEffect(() => {
-    if (notifIntervalRef.current) clearInterval(notifIntervalRef.current);
     if (!notif) return;
-    notifIntervalRef.current = setInterval(checkNotifications, 30 * 1000);
-    return () => clearInterval(notifIntervalRef.current);
-  }, [log, notif]);
+    const unsubPromise = listenForegroundMessages(payload => {
+      const { title, body } = payload.notification ?? {};
+      if (title) showMushroomNotif({ title, body });
+    });
+    return () => { unsubPromise.then(unsub => unsub?.()); };
+  }, [notif]);
 
   useEffect(() => {
     if (!user) return;
@@ -536,9 +519,13 @@ export default function App() {
   }, [user]);
 
   async function requestNotif() {
-    if (!("Notification" in window)) return alert("Notifications not supported in this browser.");
-    const p = await Notification.requestPermission();
-    if (p === "granted") setNotif(true);
+    try {
+      const { granted } = await enablePushNotifications();
+      setNotif(granted);
+    } catch (e) {
+      console.error("enablePushNotifications failed", e);
+      alert(e.message || "Couldn't enable notifications.");
+    }
   }
 
   // Derived form state
@@ -564,14 +551,23 @@ export default function App() {
       ? new Date(form.endedAt).getTime()
       : (endTime ? endTime.getTime() : null);
 
+    // Reminder scheduling: only for entries logged while still running.
+    // The Cloud Function scans for notifyAt <= now && notified === false,
+    // so mushroomLabel travels with the entry (functions/ has no access to
+    // the frontend's MUSHROOM_TYPES table).
+    const notifyAt = !form.pastMode && resolvedEndTime ? resolvedEndTime - 5 * 60 * 1000 : null;
+
     const entry = {
       ...form,
-      id:           existing?.id || Date.now(),
-      endTime:      resolvedEndTime,
-      registeredAt: existing?.registeredAt || Date.now(),
+      id:            existing?.id || Date.now(),
+      endTime:       resolvedEndTime,
+      registeredAt:  existing?.registeredAt || Date.now(),
       date: new Date().toLocaleDateString("en-US", {
         month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
       }),
+      notifyAt,
+      notified:      notifyAt ? false : null,
+      mushroomLabel: selectedType?.label || form.mushroomType,
     };
     try {
       if (editId && existing?._firebaseId) {
@@ -601,12 +597,10 @@ export default function App() {
         const logEntry = { ...entry, _firebaseId: result.logFirebaseId,
           sharedMushroomId: result.sharedMushroomId, rosterId: result.rosterId, isShared: true, createdBy: user.uid };
         setLog(prev => [logEntry, ...prev]);
-        if (!form.pastMode) scheduleNotif(logEntry);
         setInvitedFriends([]);
       } else {
         const fbId = await addLog(entry);
         setLog(prev => [{ ...entry, _firebaseId: fbId }, ...prev]);
-        if (!form.pastMode) scheduleNotif({ ...entry, _firebaseId: fbId });
       }
     } catch (e) { console.error(e); alert("Failed to save. Check your connection."); return; }
     setEditId(null); setForm(BLANK_FORM);
@@ -636,10 +630,6 @@ export default function App() {
   async function deleteEntry(id) {
     const entry = log.find(e => e.id === id);
     if (!entry || !window.confirm("Delete this entry?")) return;
-    if (scheduledRefs.current[id]) {
-      if (typeof scheduledRefs.current[id] === "number") clearTimeout(scheduledRefs.current[id]);
-      delete scheduledRefs.current[id];
-    }
     try {
       if (entry._firebaseId) await removeLog(entry._firebaseId);
       setLog(prev => prev.filter(e => e.id !== id));
@@ -1816,8 +1806,13 @@ function NotifSetting({ th }) {
 
   async function request() {
     if (!("Notification" in window)) return;
-    const p = await Notification.requestPermission();
-    setStatus(p);
+    try {
+      await enablePushNotifications();
+    } catch (e) {
+      console.error("enablePushNotifications failed", e);
+      alert(e.message || "Couldn't enable notifications.");
+    }
+    setStatus(Notification.permission);
   }
 
   const label = status === "granted"   ? "✅ Notifications enabled"

@@ -11,6 +11,14 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Push notification tokens (FCM). Doc id is the token itself.
+    // Written by the client when it enables notifications; read by the
+    // scheduled Cloud Function via the Admin SDK, which bypasses these
+    // rules entirely — this only governs client access.
+    match /users/{userId}/fcmTokens/{token} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Anyone signed in can read announcements.
     // Writing is blocked from the client — use Firebase Console to post.
     match /announcements/{docId} {

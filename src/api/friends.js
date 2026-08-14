@@ -6,6 +6,7 @@ import {
   collection, getDocs, addDoc,
   serverTimestamp, onSnapshot,
 } from "firebase/firestore";
+import { MUSHROOM_TYPES } from "../App";
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -360,6 +361,10 @@ export async function registerSharedMushroom(entry, profile, invitedFriends) {
   const rosterId = await createRoster(profile.displayName);
 
   // 3. Create a personal log entry for the host
+  // notifyAt/notified/mushroomLabel drive the server-side reminder — see
+  // scripts/send-reminders.js — same fields addLog()/editLog() write for a
+  // non-shared entry.
+  const notifyAt = numericEndTime ? numericEndTime - 5 * 60 * 1000 : null;
   const logRef = await addDoc(logsRef(uid), {
     id:           entry.id,
     mushroomType: entry.mushroomType,
@@ -378,6 +383,9 @@ export async function registerSharedMushroom(entry, profile, invitedFriends) {
     isShared:     true,
     createdBy:    uid,
     createdAt:    serverTimestamp(),
+    notifyAt,
+    notified:      notifyAt ? false : null,
+    mushroomLabel: MUSHROOM_TYPES.find(t => t.id === entry.mushroomType)?.label || entry.mushroomType,
   });
 
   // 4. Send invites to each friend
@@ -406,6 +414,7 @@ export async function acceptMushroomInvite(invite, profile) {
     ? (typeof rawEndTime.toDate === 'function' ? rawEndTime.toDate().getTime() : typeof rawEndTime === 'number' ? rawEndTime : null)
     : null;
 
+  const notifyAt = numericEndTime ? numericEndTime - 5 * 60 * 1000 : null;
   const logEntry = {
     id:           Date.now(),
     mushroomType: invite.mushroomType,
@@ -425,6 +434,9 @@ export async function acceptMushroomInvite(invite, profile) {
     sharedBy:     invite.fromName,
     isShared:     true,
     createdAt:    serverTimestamp(),
+    notifyAt,
+    notified:      notifyAt ? false : null,
+    mushroomLabel: MUSHROOM_TYPES.find(t => t.id === invite.mushroomType)?.label || invite.mushroomType,
   };
 
   const logDocRef = await addDoc(logsRef(uid), logEntry);
