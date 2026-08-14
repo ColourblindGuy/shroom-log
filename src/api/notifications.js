@@ -35,7 +35,11 @@ export async function enablePushNotifications() {
 
   const registration = await navigator.serviceWorker.ready;
   const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
-  if (!token) return { granted: true, token: null };
+  // getToken() normally throws on failure, but can also resolve with an
+  // empty value (seen with some ad-blockers/privacy extensions silently
+  // dropping the FCM registration request) — treat that as a failure too
+  // instead of quietly reporting success with nothing actually registered.
+  if (!token) throw new Error("Browser didn't return a push token — an ad blocker or privacy extension may be blocking Google's push service (fcm.googleapis.com).");
 
   await setDoc(tokenDocRef(uid, token), {
     userAgent: navigator.userAgent,

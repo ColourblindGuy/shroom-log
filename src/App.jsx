@@ -1807,17 +1807,23 @@ function NotifSetting({ th }) {
   async function request() {
     if (!("Notification" in window)) return;
     try {
-      await enablePushNotifications();
+      const { granted } = await enablePushNotifications();
+      // Browser permission can be "granted" while the FCM token step still
+      // fails (dead push service, blocked by an extension, etc.) — track
+      // that as its own state instead of trusting Notification.permission
+      // alone, or the button would read "enabled" with nothing registered.
+      setStatus(granted ? "registered" : Notification.permission);
     } catch (e) {
       console.error("enablePushNotifications failed", e);
       alert(e.message || "Couldn't enable notifications.");
+      setStatus(Notification.permission);
     }
-    setStatus(Notification.permission);
   }
 
-  const label = status === "granted"   ? "✅ Notifications enabled"
+  const label = status === "registered" ? "✅ Notifications enabled"
               : status === "denied"    ? "🚫 Blocked by browser — enable in browser settings"
               : status === "unsupported" ? "⚠️ Not supported in this browser"
+              : status === "granted"   ? "⚠️ Permission granted but registration failed — tap to retry"
               : "🔔 Enable Notifications";
 
   return (
@@ -1832,13 +1838,13 @@ function NotifSetting({ th }) {
       </div>
       <button
         onClick={request}
-        disabled={status === "granted" || status === "denied" || status === "unsupported"}
+        disabled={status === "registered" || status === "denied" || status === "unsupported"}
         style={{
           width: "100%", padding: "11px", borderRadius: 12, fontFamily: "inherit",
-          fontWeight: 800, fontSize: 14, cursor: status === "default" ? "pointer" : "default",
-          border: `1.5px solid ${status === "granted" ? th.positive : th.border}`,
-          background: status === "granted" ? `${th.positive}22` : th.surfaceAlt,
-          color: status === "granted" ? th.positive : th.textMid,
+          fontWeight: 800, fontSize: 14, cursor: (status === "default" || status === "granted") ? "pointer" : "default",
+          border: `1.5px solid ${status === "registered" ? th.positive : th.border}`,
+          background: status === "registered" ? `${th.positive}22` : th.surfaceAlt,
+          color: status === "registered" ? th.positive : th.textMid,
           transition: "all 0.2s",
         }}>
         {label}
