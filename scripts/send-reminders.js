@@ -77,9 +77,11 @@ async function sendReminder(db, messaging, docSnap, now) {
 
   if (tokens.length === 0) {
     // No device registered for push — nothing to do, don't retry forever.
+    console.log(`${docSnap.ref.path}: 0 tokens for uid ${uid} — marking notified without sending.`);
     await docSnap.ref.update({ notified: true });
     return;
   }
+  console.log(`${docSnap.ref.path}: sending to ${tokens.length} token(s) for uid ${uid}.`);
 
   const label = entry.mushroomLabel || entry.mushroomType || "Mushroom";
   const size = entry.size ? `${entry.size} ` : "";
@@ -98,6 +100,11 @@ async function sendReminder(db, messaging, docSnap, now) {
       notification: { icon: "/icon-192.png", tag: "mushroom-reminder" },
       fcmOptions: { link: "/" },
     },
+  });
+
+  console.log(`${docSnap.ref.path}: ${result.successCount} succeeded, ${result.failureCount} failed.`);
+  result.responses.forEach((r, i) => {
+    if (!r.success) console.log(`  token ${tokens[i].slice(0, 12)}…: ${r.error?.code} — ${r.error?.message}`);
   });
 
   // Prune tokens FCM reports as dead (uninstalled, expired, etc.) so future
